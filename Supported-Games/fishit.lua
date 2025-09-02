@@ -3,6 +3,56 @@ local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
 
+-- ===========================
+-- GLOBAL SERVICES & VARIABLES
+-- ===========================
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+
+-- Make global for features to access
+_G.GameServices = {
+    Players = Players,
+    ReplicatedStorage = ReplicatedStorage,
+    RunService = RunService,
+    LocalPlayer = LocalPlayer,
+    HttpService = HttpService
+}
+
+-- Network path
+local NetPath = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.2.0"):WaitForChild("net")
+_G.NetPath = NetPath
+
+-- ===========================
+-- FEATURE MANAGER
+-- ===========================
+local FeatureManager = {}
+FeatureManager.LoadedFeatures = {}
+
+local FEATURE_URLS = {
+    AutoFish = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua"
+    -- tambah yang lain...
+}
+
+function FeatureManager:LoadFeature(featureName, controls)
+    local url = FEATURE_URLS[featureName]
+    if not url then return nil end
+
+    local success, feature = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+
+    if success and feature.Init then
+        feature:Init(controls)
+        self.LoadedFeatures[featureName] = feature
+        return feature
+    end
+    
+    return nil
+end
+
 
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
@@ -76,79 +126,6 @@ end
 
 -- name, icon, callback, order
 Window:CreateTopbarButton("changelog", "newspaper", ShowChangelog, 995)
-
-
--- =========================
--- FEATURE LOADER SYSTEM
--- =========================
-
--- 1. Feature Manager - tambahkan di atas GUI creation
-local FeatureManager = {}
-FeatureManager.LoadedFeatures = {}
-FeatureManager.FeatureConfigs = {}
-
--- Feature URLs - ganti dengan link raw github kamu
-local FEATURE_URLS = {
-    AutoFish = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofishing.lua"
-}
-
--- Load feature function
-local function FeatureManager:LoadFeature(featureName, controls)
-    local url = FEATURE_URLS[featureName]
-    if not url then
-        WindUI:Notify({
-            Title = "Error",
-            Content = "Feature " .. featureName .. " not found",
-            Icon = "x",
-            Duration = 3
-        })
-        return nil
-    end
-
-    local success, feature = pcall(function()
-        return loadstring(game:HttpGet(url))()
-    end)
-
-    if not success then
-        WindUI:Notify({
-            Title = "Load Error",
-            Content = "Failed to load " .. featureName,
-            Icon = "x",
-            Duration = 3
-        })
-        return nil
-    end
-
-    -- Initialize feature dengan controls
-    if type(feature) == "table" and feature.Init then
-        local initSuccess, result = pcall(feature.Init, feature, controls)
-        if initSuccess then
-            self.LoadedFeatures[featureName] = feature
-            WindUI:Notify({
-                Title = "Success",
-                Content = featureName .. " loaded",
-                Icon = "check",
-                Duration = 2
-            })
-            return feature
-        end
-    end
-
-    return nil
-end
-
--- Get loaded feature
-local function FeatureManager:GetFeature(featureName)
-    return self.LoadedFeatures[featureName]
-end
-
--- Stop feature
-local function FeatureManager:StopFeature(featureName)
-    local feature = self.LoadedFeatures[featureName]
-    if feature and feature.Stop then
-        feature:Stop()
-    end
-end
 
 
 -- helper ambil value kontrol yg compatible (tanpa integrasi apapun)
@@ -571,27 +548,43 @@ local webhookfish_tgl = TabMisc:Toggle({
 
 -- Setelah GUI elements dibuat, wire ke features:
 
--- 1. Auto Fish Feature
+-- Setelah autofish controls dibuat, ganti callback:
 local autoFishFeature = nil
+
+-- Update mode when dropdown changes
+autofishmode_dd:OnChanged(function(mode)
+    if autoFishFeature then
+        autoFishFeature:SetMode(mode)
+    end
+end)
+
+-- Toggle autofish
 autofish_tgl:OnChanged(function(state)
     if state then
+        -- Load feature if not loaded
         if not autoFishFeature then
             autoFishFeature = FeatureManager:LoadFeature("AutoFish", {
                 modeDropdown = autofishmode_dd,
                 toggle = autofish_tgl
             })
         end
-        if autoFishFeature and autoFishFeature.Start then
-            autoFishFeature:Start({
-                mode = getValue(autofishmode_dd) or "Category A"
-            })
+        
+        -- Start fishing
+        if autoFishFeature then
+            local mode = autofishmode_dd:GetValue() or "Perfect"
+            autoFishFeature:Start({ mode = mode })
         end
     else
-        if autoFishFeature and autoFishFeature.Stop then
+        -- Stop fishing
+        if autoFishFeature then
             autoFishFeature:Stop()
         end
     end
 end)
+
+-- Update dropdown values dengan fishing modes yang sesuai
+autofishmode_dd:SetValues({ "Perfect", "OK", "Mid" })
+autofishmode_dd:SetValue("Perfect")
 
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
