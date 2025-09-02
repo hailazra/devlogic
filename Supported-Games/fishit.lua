@@ -3,7 +3,7 @@ local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
 
---- ===========================
+-- ===========================
 -- GLOBAL SERVICES & VARIABLES
 -- ===========================
 local Players = game:GetService("Players")
@@ -21,8 +21,11 @@ _G.GameServices = {
     HttpService = HttpService
 }
 
--- Network path
-local NetPath = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.2.0"):WaitForChild("net")
+-- Safe network path access
+local NetPath = nil
+pcall(function()
+    NetPath = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.2.0"):WaitForChild("net")
+end)
 _G.NetPath = NetPath
 
 -- ===========================
@@ -33,26 +36,50 @@ FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
     AutoFish = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua"
-    -- tambah yang lain...
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
     local url = FEATURE_URLS[featureName]
-    if not url then return nil end
+    if not url then 
+        WindUI:Notify({
+            Title = "Error",
+            Content = "Feature " .. featureName .. " URL not found",
+            Icon = "x",
+            Duration = 3
+        })
+        return nil 
+    end
 
     local success, feature = pcall(function()
         return loadstring(game:HttpGet(url))()
     end)
 
-    if success and feature.Init then
-        feature:Init(controls)
-        self.LoadedFeatures[featureName] = feature
-        return feature
+    if success and type(feature) == "table" and feature.Init then
+        local initSuccess = pcall(feature.Init, feature, controls)
+        if initSuccess then
+            self.LoadedFeatures[featureName] = feature
+            WindUI:Notify({
+                Title = "Success",
+                Content = featureName .. " loaded successfully",
+                Icon = "check",
+                Duration = 2
+            })
+            return feature
+        end
     end
     
+    WindUI:Notify({
+        Title = "Load Failed",
+        Content = "Could not load " .. featureName,
+        Icon = "x",
+        Duration = 3
+    })
     return nil
 end
 
+function FeatureManager:GetFeature(name)
+    return self.LoadedFeatures[name]
+end
 
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
@@ -127,26 +154,6 @@ end
 -- name, icon, callback, order
 Window:CreateTopbarButton("changelog", "newspaper", ShowChangelog, 995)
 
-
--- helper ambil value kontrol yg compatible (tanpa integrasi apapun)
-local function getValue(ctrl)
-    if ctrl == nil then return nil end
-    if type(ctrl.GetValue) == "function" then
-        local ok, v = pcall(ctrl.GetValue, ctrl)
-        if ok then return v end
-    end
-    return rawget(ctrl, "Value")
-end
-
-local function toListText(v)
-    if typeof(v) == "table" then
-        local buf = {}
-        for _, item in ipairs(v) do table.insert(buf, tostring(item)) end
-        return table.concat(buf, ", ")
-    end
-    return tostring(v)
-end
-
 --========== TABS ==========
 local TabHome     = Window:Tab({ Title = "Home",     Icon = "house" })
 local TabMain     = Window:Tab({ Title = "Main",     Icon = "gamepad" })
@@ -186,20 +193,58 @@ local autofish_sec = TabMain:Section({
     TextSize = 17, -- Default Size
 })
 
+local autoFishFeature = nil
+local currentFishingMode = "Perfect"
+
 local autofishmode_dd = TabMain:Dropdown({
     Title = "Fishing Mode",
     Values = { "Perfect", "OK", "Mid" },
     Value = "Perfect",
     Callback = function(option) 
-        print("Category selected: " .. option) 
+        currentFishingMode = option
+        print("[GUI] Fishing mode changed to:", option)
+        
+        -- Update mode if feature is loaded
+        if autoFishFeature and autoFishFeature.SetMode then
+            autoFishFeature:SetMode(option)
+        end
     end
 })
     
 local autofish_tgl = TabMain:Toggle({
     Title = "Auto Fishing",
+    Desc = "Automatically fish with selected mode",
     Default = false,
     Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+        print("[GUI] AutoFish toggle:", state)
+        
+        if state then
+            -- Load feature if not already loaded
+            if not autoFishFeature then
+                autoFishFeature = FeatureManager:LoadFeature("AutoFish", {
+                    modeDropdown = autofishmode_dd,
+                    toggle = autofish_tgl
+                })
+            end
+            
+            -- Start fishing if feature loaded successfully
+            if autoFishFeature and autoFishFeature.Start then
+                autoFishFeature:Start({ mode = currentFishingMode })
+            else
+                -- Reset toggle if failed to load
+                WindUI:Notify({
+                    Title = "Failed",
+                    Content = "Could not start AutoFish",
+                    Icon = "x",
+                    Duration = 3
+                })
+            end
+        else
+            -- Stop fishing
+            if autoFishFeature and autoFishFeature.Stop then
+                autoFishFeature:Stop()
+            end
+        end
     end
 })
 
@@ -542,50 +587,6 @@ local webhookfish_tgl = TabMisc:Toggle({
     end
 })
 
--- =========================
--- WIRING GUI KE FEATURES
--- =========================
-
--- Setelah GUI elements dibuat, wire ke features:
-
--- Setelah autofish controls dibuat, ganti callback:
-local autoFishFeature = nil
-
--- Update mode when dropdown changes
-autofishmode_dd:OnChanged(function(mode)
-    if autoFishFeature then
-        autoFishFeature:SetMode(mode)
-    end
-end)
-
--- Toggle autofish
-autofish_tgl:OnChanged(function(state)
-    if state then
-        -- Load feature if not loaded
-        if not autoFishFeature then
-            autoFishFeature = FeatureManager:LoadFeature("AutoFish", {
-                modeDropdown = autofishmode_dd,
-                toggle = autofish_tgl
-            })
-        end
-        
-        -- Start fishing
-        if autoFishFeature then
-            local mode = autofishmode_dd:GetValue() or "Perfect"
-            autoFishFeature:Start({ mode = mode })
-        end
-    else
-        -- Stop fishing
-        if autoFishFeature then
-            autoFishFeature:Stop()
-        end
-    end
-end)
-
--- Update dropdown values dengan fishing modes yang sesuai
-autofishmode_dd:SetValues({ "Perfect", "OK", "Mid" })
-autofishmode_dd:SetValue("Perfect")
-
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
     Window:OnClose(function()
@@ -596,10 +597,10 @@ end
 
 if type(Window.OnDestroy) == "function" then
     Window:OnDestroy(function()
-        print("[GUI] Window destroyed - Cleaning up features")
-        for featureName, feature in pairs(FeatureManager.LoadedFeatures) do
+        print("[GUI] Window destroying - cleaning up")
+        for _, feature in pairs(FeatureManager.LoadedFeatures) do
             if feature.Cleanup then
-                feature:Cleanup()
+                pcall(feature.Cleanup, feature)
             end
         end
         FeatureManager.LoadedFeatures = {}
