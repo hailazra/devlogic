@@ -253,7 +253,7 @@ function AutoFishFeature:WaitAndComplete()
     if not FishingCompleted then return false end
     
     -- Wait for fish bite (realistic timing)
-    local waitTime = math.random(1, 2)  -- 2-4 seconds
+    local waitTime = math.random(200, 400) / 100  -- 2-4 seconds
     wait(waitTime)
     
     -- Complete fishing
