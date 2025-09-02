@@ -52,7 +52,7 @@ local remotesInitialized = false
 local FISHING_CONFIGS = {
     ["Perfect"] = {
         chargeTime = 1.0,
-        waitTime = 1.0,
+        waitTime = 0.1,
         rodSlot = 1
     },
     ["OK"] = {
@@ -166,7 +166,7 @@ function AutoFishFeature:ExecuteFishingSequence()
         return false
     end
     
-    wait(0.5)
+    wait(0.1)
     
     -- Step 2: Charge rod
     local chargeValue = self:ChargeRod(config.chargeTime)
@@ -175,7 +175,7 @@ function AutoFishFeature:ExecuteFishingSequence()
         return false
     end
     
-    wait(0.3)
+    wait(0.1)
     
     -- Step 3: Cast rod
     if not self:CastRod() then
