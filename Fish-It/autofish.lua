@@ -52,7 +52,7 @@ local remotesInitialized = false
 local FISHING_CONFIGS = {
     ["Perfect"] = {
         chargeTime = 1.0,
-        waitTime = 2.0,
+        waitTime = 1.0,
         rodSlot = 1
     },
     ["OK"] = {
