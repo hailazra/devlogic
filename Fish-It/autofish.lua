@@ -175,13 +175,7 @@ function AutoFishFeature:ExecuteFishingSequence()
         return false
     end
     
-    wait(0.1)
-    
-    -- Step 3: Cast rod
-    if not self:CastRod() then
-        warn("[AutoFish] Failed to cast rod")
-        return false
-    end
+
     
     -- Step 4: Wait for fish and complete
     return self:WaitAndComplete()
@@ -226,27 +220,6 @@ function AutoFishFeature:ChargeRod(chargeTime)
     end
 end
 
--- Cast rod to water
-function AutoFishFeature:CastRod()
-    if not RequestFishing then return false end
-    
-    local success, result = pcall(function()
-        -- Random cast direction for natural behavior
-        local x = math.random(-150, 150) / 100  -- -1.5 to 1.5
-        local z = math.random(80, 120) / 100    -- 0.8 to 1.2
-        
-        local response = RequestFishing:InvokeServer(x, z)
-        return response
-    end)
-    
-    if success then
-        print("[AutoFish] Rod cast")
-        return result
-    else
-        warn("[AutoFish] Failed to cast rod:", result)
-        return false
-    end
-end
 
 -- Wait for fish and complete catch
 function AutoFishFeature:WaitAndComplete()
