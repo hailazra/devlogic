@@ -122,7 +122,7 @@ Window:Tag({
 
 -- === Topbar Changelog (simple) ===
 local CHANGELOG = table.concat({
-    "[+] Optimization GUI",
+    "[+] Auto Fishing (Still have bug)",
 }, "\n")
 local DISCORD = table.concat({
     "https://discord.gg/3AzvRJFT3M",
