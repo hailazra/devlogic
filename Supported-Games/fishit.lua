@@ -77,6 +77,80 @@ end
 -- name, icon, callback, order
 Window:CreateTopbarButton("changelog", "newspaper", ShowChangelog, 995)
 
+
+-- =========================
+-- FEATURE LOADER SYSTEM
+-- =========================
+
+-- 1. Feature Manager - tambahkan di atas GUI creation
+local FeatureManager = {}
+FeatureManager.LoadedFeatures = {}
+FeatureManager.FeatureConfigs = {}
+
+-- Feature URLs - ganti dengan link raw github kamu
+local FEATURE_URLS = {
+    AutoFish = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofishing.lua"
+}
+
+-- Load feature function
+local function FeatureManager:LoadFeature(featureName, controls)
+    local url = FEATURE_URLS[featureName]
+    if not url then
+        WindUI:Notify({
+            Title = "Error",
+            Content = "Feature " .. featureName .. " not found",
+            Icon = "x",
+            Duration = 3
+        })
+        return nil
+    end
+
+    local success, feature = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+
+    if not success then
+        WindUI:Notify({
+            Title = "Load Error",
+            Content = "Failed to load " .. featureName,
+            Icon = "x",
+            Duration = 3
+        })
+        return nil
+    end
+
+    -- Initialize feature dengan controls
+    if type(feature) == "table" and feature.Init then
+        local initSuccess, result = pcall(feature.Init, feature, controls)
+        if initSuccess then
+            self.LoadedFeatures[featureName] = feature
+            WindUI:Notify({
+                Title = "Success",
+                Content = featureName .. " loaded",
+                Icon = "check",
+                Duration = 2
+            })
+            return feature
+        end
+    end
+
+    return nil
+end
+
+-- Get loaded feature
+local function FeatureManager:GetFeature(featureName)
+    return self.LoadedFeatures[featureName]
+end
+
+-- Stop feature
+local function FeatureManager:StopFeature(featureName)
+    local feature = self.LoadedFeatures[featureName]
+    if feature and feature.Stop then
+        feature:Stop()
+    end
+end
+
+
 -- helper ambil value kontrol yg compatible (tanpa integrasi apapun)
 local function getValue(ctrl)
     if ctrl == nil then return nil end
@@ -97,12 +171,12 @@ local function toListText(v)
 end
 
 --========== TABS ==========
- TabHome     = Window:Tab({ Title = "Home",     Icon = "house" })
- TabMain     = Window:Tab({ Title = "Main",     Icon = "gamepad" })
- TabBackpack = Window:Tab({ Title = "Backpack", Icon = "bag" })
- TabShop     = Window:Tab({ Title = "Shop",     Icon = "shopping-bag" })
- TabTeleport = Window:Tab({ Title = "Teleport", Icon = "map" })
- TabMisc     = Window:Tab({ Title = "Misc",     Icon = "cog" })
+local TabHome     = Window:Tab({ Title = "Home",     Icon = "house" })
+local TabMain     = Window:Tab({ Title = "Main",     Icon = "gamepad" })
+local TabBackpack = Window:Tab({ Title = "Backpack", Icon = "bag" })
+local TabShop     = Window:Tab({ Title = "Shop",     Icon = "shopping-bag" })
+local TabTeleport = Window:Tab({ Title = "Teleport", Icon = "map" })
+local TabMisc     = Window:Tab({ Title = "Misc",     Icon = "cog" })
 
 --- === Home === ---
 local DLsec = TabHome:Section({ 
@@ -491,6 +565,34 @@ local webhookfish_tgl = TabMisc:Toggle({
     end
 })
 
+-- =========================
+-- WIRING GUI KE FEATURES
+-- =========================
+
+-- Setelah GUI elements dibuat, wire ke features:
+
+-- 1. Auto Fish Feature
+local autoFishFeature = nil
+autofish_tgl:OnChanged(function(state)
+    if state then
+        if not autoFishFeature then
+            autoFishFeature = FeatureManager:LoadFeature("AutoFish", {
+                modeDropdown = autofishmode_dd,
+                toggle = autofish_tgl
+            })
+        end
+        if autoFishFeature and autoFishFeature.Start then
+            autoFishFeature:Start({
+                mode = getValue(autofishmode_dd) or "Category A"
+            })
+        end
+    else
+        if autoFishFeature and autoFishFeature.Stop then
+            autoFishFeature:Stop()
+        end
+    end
+end)
+
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
     Window:OnClose(function()
@@ -501,7 +603,13 @@ end
 
 if type(Window.OnDestroy) == "function" then
     Window:OnDestroy(function()
-        print("[GUI] Window destroyed")
-        -- Tidak ada cleanup integrasi fitur di sini
+        print("[GUI] Window destroyed - Cleaning up features")
+        for featureName, feature in pairs(FeatureManager.LoadedFeatures) do
+            if feature.Cleanup then
+                feature:Cleanup()
+            end
+        end
+        FeatureManager.LoadedFeatures = {}
     end)
 end
+
