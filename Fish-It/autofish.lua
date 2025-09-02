@@ -52,17 +52,17 @@ local remotesInitialized = false
 local FISHING_CONFIGS = {
     ["Perfect"] = {
         chargeTime = 1.0,
-        waitTime = 0.1,
+        waitTime = 1.0,
         rodSlot = 1
     },
     ["OK"] = {
-        chargeTime = 0.9,
-        waitTime = 3.0,
+        chargeTime = 0.8,
+        waitTime = 2.0,
         rodSlot = 1
     },
     ["Mid"] = {
         chargeTime = 0.5,
-        waitTime = 4.0,
+        waitTime = 3.0,
         rodSlot = 1
     }
 }
@@ -149,7 +149,7 @@ function AutoFishFeature:FishingLoop()
             print("[AutoFish] Fishing failed, retrying in", config.waitTime, "seconds")
         end
         
-        wait(0.5) -- Small delay before next attempt
+        wait(0.1) -- Small delay before next attempt
         fishingInProgress = false
     end)
 end
@@ -176,13 +176,12 @@ function AutoFishFeature:ExecuteFishingSequence()
     end
     
     wait(0.1)
-
+    
     -- Step 3: Cast rod
     if not self:CastRod() then
         warn("[AutoFish] Failed to cast rod")
         return false
     end
-
     
     -- Step 4: Wait for fish and complete
     return self:WaitAndComplete()
