@@ -188,8 +188,8 @@ local autofish_sec = TabMain:Section({
 
 local autofishmode_dd = TabMain:Dropdown({
     Title = "Fishing Mode",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = "Category A",
+    Values = { "Perfect", "OK", "Mid" },
+    Value = "Perfect",
     Callback = function(option) 
         print("Category selected: " .. option) 
     end
