@@ -285,32 +285,46 @@ function AutoFishFeature:DetectFishBite(maxWaitTime)
     return false
 end
 
--- Check GUI for bite indicators
+-- Check GUI for bite indicators (enhanced)
 function AutoFishFeature:CheckGuiForBiteIndicator(gui)
-    -- Look for exclamation mark or fishing indicators
-    local function searchForIndicator(obj)
-        if not obj then return false end
+    local function searchForIndicator(obj, depth)
+        if not obj or depth > 5 then return false end -- Limit recursion depth
         
-        -- Check for common bite indicator patterns
-        if obj.Name:lower():find("exclamation") or 
-           obj.Name:lower():find("bite") or
-           obj.Name:lower():find("fish") then
+        -- Check visibility first
+        if obj:IsA("GuiObject") and not obj.Visible then
+            return false
+        end
+        
+        -- Check for exclamation mark in name/text
+        local name = obj.Name:lower()
+        if name:find("exclamation") or name:find("!") or 
+           name:find("bite") or name:find("fish") or
+           name:find("pull") or name:find("catch") then
             if obj:IsA("GuiObject") and obj.Visible then
                 return true
             end
         end
         
-        -- Check text for "!" or fishing terms
+        -- Check text content
         if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            local text = obj.Text:lower()
-            if text:find("!") or text:find("bite") or text:find("pull") then
+            local text = obj.Text
+            if text:find("!") or text:find("BITE") or 
+               text:find("PULL") or text:find("CATCH") then
+                return obj.Visible
+            end
+        end
+        
+        -- Check image content (exclamation mark images)
+        if obj:IsA("ImageLabel") then
+            local image = obj.Image
+            if image:find("exclamation") or image:find("alert") then
                 return obj.Visible
             end
         end
         
         -- Recursively check children
         for _, child in pairs(obj:GetChildren()) do
-            if searchForIndicator(child) then
+            if searchForIndicator(child, depth + 1) then
                 return true
             end
         end
@@ -318,7 +332,7 @@ function AutoFishFeature:CheckGuiForBiteIndicator(gui)
         return false
     end
     
-    return searchForIndicator(gui)
+    return searchForIndicator(gui, 0)
 end
 
 -- Complete catch instantly
