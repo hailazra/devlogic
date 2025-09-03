@@ -35,8 +35,7 @@ local FeatureManager = {}
 FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
-    AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua",
-    AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua"
+    AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -307,13 +306,9 @@ local sellfish_dd = TabBackpack:Dropdown({
     Title = "Select Rarity",
     Values = { "Secret", "Mythic", "Legendary" },
     Value = "Legendary",
-    Callback = function(option) 
-        Callback = function(option)
-    currentSellThreshold = option
-    if sellfishFeature and sellfishFeature.SetMode then
-      sellfishFeature:SetMode(option)
+     Callback = function(option) 
+        print("Category selected: " .. option) 
     end
-  end
 })
 
 local sellfish_in = TabBackpack:Input({
@@ -321,42 +316,18 @@ local sellfish_in = TabBackpack:Input({
     Placeholder = "e.g 1000",
     Value = "",
     Numeric = true,
-    Callback    = function(value)
-    local n = tonumber(value) or 0
-    currentSellLimit = n
-    if sellfishFeature and sellfishFeature.SetLimit then
-      sellfishFeature:SetLimit(n)
+    Callback = function(input) 
+        print("delay entered: " .. input)
     end
-  end
 })
 
 local sellfish_tgl = TabBackpack:Toggle({
     Title = "Auto Sell",
     Desc = "Auto Sell when reach limit",
     Default = false,
-    Callback = function(state)
-    if state then
-      if not sellfishFeature then
-        sellfishFeature = FeatureManager:LoadFeature("AutoSellFish", {
-          thresholdDropdown = sellfish_dd,
-          limitInput        = sellfish_in,
-          toggle            = sellfish_tgl,
-        })
-      end
-      if sellfishFeature and sellfishFeature.Start then
-        sellfishFeature:Start({
-          threshold   = currentSellThreshold,
-          limit       = currentSellLimit,
-          autoOnLimit = true,
-        })
-      else
-        sellfish_tgl:Set(false)
-        WindUI:Notify({ Title="Failed", Content="Could not start AutoSellFish", Icon="x", Duration=3 })
-      end
-    else
-      if sellfishFeature and sellfishFeature.Stop then sellfishFeature:Stop() end
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
     end
-  end
 })
 
 --- Gift Fish
