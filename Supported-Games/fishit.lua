@@ -37,7 +37,7 @@ FeatureManager.LoadedFeatures = {}
 local FEATURE_URLS = {
     AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
     AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua", 
-    AutoTeleportIsland  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua"
+    ---AutoTeleportIsland  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -485,7 +485,6 @@ local teleisland_sec = TabTeleport:Section({
 
 -- Variable untuk menyimpan current island selection
 local currentTeleportIsland = "Fisherman Island"
-
 local teleisland_dd = TabTeleport:Dropdown({
     Title = "Select Island",
     Values = { "Fisherman Island", "Kohana", "Kohana Volcano", "Coral Reefs", "Esoteric Depths", "Tropical Grove", "Crater Island", "Lost Isle" },
