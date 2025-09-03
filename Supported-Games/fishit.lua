@@ -53,8 +53,7 @@ function FeatureManager:LoadFeature(featureName, controls)
     end
 
      local success, feature = pcall(function()
-        local source = game:GetService("HttpService"):GetAsync(url)
-        return loadstring(source)()
+        return loadstring(game:HttpGet(url))()
     end)
 
     if success and type(feature) == "table" and feature.Init then
