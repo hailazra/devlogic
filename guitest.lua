@@ -4,8 +4,8 @@ local WindUI = loadstring(game:HttpGet(
 ))()
 
 
-WindUI:AddTheme({
-    Name        = "DevlogicDarkRed",
+-- Custom Theme: DarkPurple
+WindUI.Themes["DarkRedDL"] = {
     Accent      = "#EF4444", -- merah utama (aksi/selected/slider fill)
     Dialog      = "#111114", -- panel/elevated surface
     Outline     = "#27272A", -- border/garis
@@ -14,10 +14,10 @@ WindUI:AddTheme({
     Background  = "#0A0A0B", -- latar utama (near-black)
     Button      = "#18181B", -- default button / kontainer elemen
     Icon        = "#A1A1AA", -- ikon netral
-    })
 
-WindUI:SetTheme("DevLogicDarkRed")
+}
 
+Theme = "DarkRedDL"
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
     Title         = ".devlogic",
@@ -25,7 +25,7 @@ local Window = WindUI:CreateWindow({
     Author        = "Grow A Garden",
     Folder        = ".devlogichub",
     Size          = UDim2.fromOffset(250, 250),
-    Theme         = "DevLogicDarkRed",
+    Theme         = "DarkRedDL",
     Resizable     = false,
     SideBarWidth  = 120,
     HideSearchBar = true,
