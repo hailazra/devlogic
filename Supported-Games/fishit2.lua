@@ -293,6 +293,74 @@ local favfish_tgl = TabBackpack:Toggle({
     end
 })
 
+--- Sell Fish
+local sellfish_sec = TabBackpack:Section({ 
+    Title = "Sell Fish",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local sellfishFeature        = nil
+local currentSellThreshold   = "Legendary"
+local currentSellLimit       = 0
+
+local sellfish_dd = TabBackpack:Dropdown({
+    Title = "Select Rarity",
+    Values = { "Secret", "Mythic", "Legendary" },
+    Value = "Legendary",
+    Callback = function(option)
+    currentSellThreshold = option
+    if sellfishFeature and sellfishFeature.SetMode then
+      sellfishFeature:SetMode(option)
+    end
+  end
+})
+
+local sellfish_in = TabBackpack:Input({
+    Title = "Sell Delay",
+    Placeholder = "e.g 60 (second)",
+    Desc = "Input delay in seconds."
+    Value = "",
+    Numeric = true,
+    Callback    = function(value)
+    local n = tonumber(value) or 0
+    currentSellLimit = n
+    if sellfishFeature and sellfishFeature.SetLimit then
+      sellfishFeature:SetLimit(n)
+    end
+  end
+})
+
+local sellfish_tgl = TabBackpack:Toggle({
+    Title = "Auto Sell",
+    Desc = "",
+    Default = false,
+    Callback = function(state)
+    if state then
+      if not sellfishFeature then
+        sellfishFeature = FeatureManager:LoadFeature("AutoSellFish", {
+          thresholdDropdown = sellfish_dd,
+          limitInput        = sellfish_in,
+          toggle            = sellfish_tgl,
+        })
+      end
+      if sellfishFeature and sellfishFeature.Start then
+        sellfishFeature:Start({
+          threshold   = currentSellThreshold,
+          limit       = currentSellLimit,
+          autoOnLimit = true,
+        })
+      else
+        sellfish_tgl:Set(false)
+        WindUI:Notify({ Title="Failed", Content="Could not start AutoSellFish", Icon="x", Duration=3 })
+      end
+    else
+      if sellfishFeature and sellfishFeature.Stop then sellfishFeature:Stop() end
+    end
+  end
+})
+
+
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
     Window:OnClose(function()
