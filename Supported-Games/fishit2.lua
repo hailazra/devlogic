@@ -248,19 +248,3 @@ local autofish_tgl = TabMain:Toggle({
         end
     end
 })
-
---- Event Teleport
-local eventtele_sec = TabMain:Section({ 
-    Title = "Event Teleport",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
-local eventtele_tgl = TabMain:Toggle({
-    Title = "Auto Event Teleport",
-    Desc  = "Auto Teleport to Event when available",
-    Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
-    end
-})
