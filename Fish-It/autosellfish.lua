@@ -8,26 +8,13 @@ AutoSellFish.__index = AutoSellFish
 
 -- Services
 local Players        = game:GetService("Players")
-local ReplicatedStorage    = game:GetService("ReplicatedStorage")
+local Replicated     = game:GetService("ReplicatedStorage")
 local RunService     = game:GetService("RunService")
 local LocalPlayer    = Players.LocalPlayer
 
 -- Network objects (initialized in Init)
 local NetPath = nil
 local UpdateAutoSellThresholdRF, SellAllItemsRF
-
--- Initialize remote references. Returns true on success.
-local function initializeRemotes()
-    local success, err = pcall(function()
-        NetPath = ReplicatedStorage:WaitForChild("Packages", 5)
-            :WaitForChild("_Index", 5)
-            :WaitForChild("sleitnick_net@0.2.0", 5)
-            :WaitForChild("net", 5)
-        UpdateAutoSellThresholdRF = NetPath:WaitForChild("RF/UpdateAutoSellThreshold", 5)
-        SellAllItemsRF            = NetPath:WaitForChild("RF/SellAllItems", 5)
-    end)
-    return success
-end
 
 -- Rarity threshold enumeration. These numeric codes must match the
 -- server‑side expectations for UpdateAutoSellThreshold.
@@ -106,7 +93,18 @@ function AutoSellFish:PerformSellAll()
     return ok
 end
 
-
+-- Initialize remote references. Returns true on success.
+local function initializeRemotes()
+    local success, err = pcall(function()
+        NetPath = Replicated:WaitForChild("Packages", 5)
+            :WaitForChild("_Index", 5)
+            :WaitForChild("sleitnick_net@0.2.0", 5)
+            :WaitForChild("net", 5)
+        UpdateAutoSellThresholdRF = NetPath:WaitForChild("RF/UpdateAutoSellThreshold", 5)
+        SellAllItemsRF            = NetPath:WaitForChild("RF/SellAllItems", 5)
+    end)
+    return success
+end
 
 --------------------------------------------------------------------------
 -- Public API
