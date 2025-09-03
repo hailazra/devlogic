@@ -3,6 +3,7 @@
 -- File: autosellfish.lua
 -- ===========================
 
+
 local AutoSellFish = {}
 AutoSellFish.__index = AutoSellFish
 
@@ -24,15 +25,14 @@ local THRESHOLD_ENUM = {
     Secret    = 7,
 }
 
--- Internal state
 local isRunning          = false
 local connection         = nil
 local remotesInitialized = false
 local currentMode        = "Legendary" -- default rarity threshold
 local lastAppliedMode    = nil         -- used to debounce threshold updates
 local limitEnabled       = true        -- auto sell will run when true
-local limitValue         = 0           -- number of fish (Tools) to trigger sell
-local lastInventoryCount = 0           -- cached count of Tools in backpack
+local limitValue         = 0           -- delay (seconds) between sales; 0 = immediate
+local lastSellTime       = 0           -- timestamp of the last sale
 
 -- Interval between loop iterations (in seconds). A small wait
 -- prevents the loop from overloading the Heartbeat event.
@@ -40,28 +40,8 @@ local WAIT_BETWEEN = 0.15
 local _lastTick    = 0
 
 --------------------------------------------------------------------------
--- Helpers
 --------------------------------------------------------------------------
 
--- Count how many fish (Tools) are currently in the player's Backpack.
--- The game treats fish as Tool instances in Backpack. Other items in
--- Backpack will also be counted, so only fish should be stored there.
-local function getInventoryItemCount()
-    local bp = LocalPlayer and LocalPlayer:FindFirstChild("Backpack")
-    if not bp then return 0 end
-    local count = 0
-    for _, child in ipairs(bp:GetChildren()) do
-        if child:IsA("Tool") then
-            count = count + 1
-        end
-    end
-    return count
-end
-
--- Update the cached inventory count
-function AutoSellFish:UpdateInventoryCount()
-    lastInventoryCount = getInventoryItemCount()
-end
 
 -- Apply the rarity threshold on the server. This function is debounced
 -- using `lastAppliedMode` to avoid sending the same value repeatedly.
@@ -118,14 +98,14 @@ function AutoSellFish:Init(guiControls)
         warn("[AutoSellFish] Failed to initialize remotes")
         return false
     end
-    self:UpdateInventoryCount()
+    -- no inventory count needed for time-based selling
     return true
 end
 
 -- Start the automation. Accepts a config table:
 --  threshold   : string ("Legendary", "Mythic", "Secret")
---  limit       : number (fish count to trigger sell)
---  autoOnLimit : boolean (enable/disable auto sell on limit)
+--  limit       : number (delay between automatic sales in seconds; 0 sells every loop)
+--  autoOnLimit : boolean (enable/disable automatic selling)
 function AutoSellFish:Start(config)
     if isRunning then return end
     if not remotesInitialized then
@@ -145,6 +125,8 @@ function AutoSellFish:Start(config)
     end
     -- Apply threshold once on start
     self:_applyThreshold(currentMode)
+    -- Initialize last sell timestamp so the timer starts now
+    lastSellTime = tick()
     isRunning = true
     connection = RunService.Heartbeat:Connect(function()
         if not isRunning then return end
@@ -178,14 +160,14 @@ function AutoSellFish:SetMode(mode)
     return self:_applyThreshold(mode)
 end
 
--- Set the limit at which auto sell triggers. Must be non-negative.
+-- Set the delay between automatic sales (in seconds). Must be non-negative.
 function AutoSellFish:SetLimit(n)
     if type(n) ~= "number" then return false end
     limitValue = math.max(0, math.floor(n))
     return true
 end
 
--- Enable or disable automatic selling when the limit is reached.
+-- Enable or disable automatic selling.
 function AutoSellFish:SetAutoSellOnLimit(enabled)
     limitEnabled = not not enabled
     return true
@@ -205,14 +187,19 @@ function AutoSellFish:_loop()
     _lastTick = now
     -- Ensure threshold is applied (debounced)
     self:_applyThreshold(currentMode)
-    -- Auto sell on limit
+    -- Auto sell on timer. If limitValue is 0, sell on every loop. Otherwise,
+    -- sell when the interval has elapsed.
     if limitEnabled then
-        self:UpdateInventoryCount()
-        if lastInventoryCount >= limitValue and limitValue > 0 then
-            if self:PerformSellAll() then
-                -- Allow some time for the server to process the sale
-                task.wait(0.1)
-                self:UpdateInventoryCount()
+        if limitValue <= 0 then
+            -- sell immediately on each iteration
+            self:PerformSellAll()
+            -- no need to track lastSellTime here
+        else
+            if now - lastSellTime >= limitValue then
+                if self:PerformSellAll() then
+                    -- record the time of this sale
+                    lastSellTime = now
+                end
             end
         end
     end
