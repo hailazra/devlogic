@@ -172,6 +172,8 @@ function AutoFishFeature:ExecuteSpamFishingSequence()
         return false
     end
     
+    wait(0.2)
+
     -- Step 2: Charge rod
     if not self:ChargeRod(config.chargeTime) then
         return false
@@ -224,7 +226,7 @@ function AutoFishFeature:CastRod()
     return success
 end
 
--- Start spamming FishingCompleted
+-- Start spamming FishingCompleted with leaderstats detection
 function AutoFishFeature:StartCompletionSpam(delay, maxTime)
     if spamActive then return end
     
@@ -232,19 +234,19 @@ function AutoFishFeature:StartCompletionSpam(delay, maxTime)
     completionCheckActive = true
     local spamStartTime = tick()
     
-    print("[AutoFish] Starting completion SPAM...")
+    print("[AutoFish] Starting completion SPAM with leaderstats detection...")
     
-    -- Update backpack count before spam
-    self:UpdateBackpackCount()
+    -- Update caught count before spam
+    self:UpdateCaughtCount()
     
     spawn(function()
         while spamActive and isRunning and (tick() - spamStartTime) < maxTime do
             -- Fire completion
             local fired = self:FireCompletion()
             
-            -- Check if fishing completed
-            if self:CheckFishingCompleted() then
-                print("[AutoFish] Fish caught via SPAM method!")
+            -- Check if fishing completed using leaderstats
+            if self:CheckFishingCompletedByLeaderstats() then
+                print("[AutoFish] Fish caught detected via leaderstats!")
                 break
             end
             
