@@ -186,3 +186,81 @@ local DiscordBtn = TabHome:Button({
     end
 })
 
+--- === Main === ---
+--- Auto Fish
+local autofish_sec = TabMain:Section({ 
+    Title = "Fishing",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local autoFishFeature = nil
+local currentFishingMode = "Perfect"
+
+local autofishmode_dd = TabMain:Dropdown({
+    Title = "Fishing Mode",
+    Values = { "Perfect", "OK", "Mid" },
+    Value = "Perfect",
+    Callback = function(option) 
+        currentFishingMode = option
+        print("[GUI] Fishing mode changed to:", option)
+        
+        -- Update mode if feature is loaded
+        if autoFishFeature and autoFishFeature.SetMode then
+            autoFishFeature:SetMode(option)
+        end
+    end
+})
+    
+local autofish_tgl = TabMain:Toggle({
+    Title = "Auto Fishing",
+    Desc = "Automatically fishing with selected mode",
+    Default = false,
+    Callback = function(state) 
+        print("[GUI] AutoFish toggle:", state)
+        
+        if state then
+            -- Load feature if not already loaded
+            if not autoFishFeature then
+                autoFishFeature = FeatureManager:LoadFeature("AutoFish", {
+                    modeDropdown = autofishmode_dd,
+                    toggle = autofish_tgl
+                })
+            end
+            
+            -- Start fishing if feature loaded successfully
+            if autoFishFeature and autoFishFeature.Start then
+                autoFishFeature:Start({ mode = currentFishingMode })
+            else
+                -- Reset toggle if failed to load
+                WindUI:Notify({
+                    Title = "Failed",
+                    Content = "Could not start AutoFish",
+                    Icon = "x",
+                    Duration = 3
+                })
+            end
+        else
+            -- Stop fishing
+            if autoFishFeature and autoFishFeature.Stop then
+                autoFishFeature:Stop()
+            end
+        end
+    end
+})
+
+--- Event Teleport
+local eventtele_sec = TabMain:Section({ 
+    Title = "Event Teleport",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local eventtele_tgl = TabMain:Toggle({
+    Title = "Auto Event Teleport",
+    Desc  = "Auto Teleport to Event when available",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
