@@ -172,7 +172,7 @@ function AutoFishFeature:ExecuteSpamFishingSequence()
         return false
     end
     
-    task.wait(0.5)
+    task.wait(0.1)
 
     -- Step 2: Charge rod
     if not self:ChargeRod(config.chargeTime) then
