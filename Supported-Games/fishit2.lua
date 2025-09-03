@@ -305,10 +305,10 @@ local currentSellThreshold   = "Legendary"
 local currentSellLimit       = 0
 
 local sellfish_dd = TabBackpack:Dropdown({
-    Title = "Select Rarity",
-    Values = { "Secret", "Mythic", "Legendary" },
-    Value = "Legendary",
-    Callback = function(option)
+  Title = "Select Rarity",
+  Values = { "Secret", "Mythic", "Legendary" },
+  Value  = "Legendary",
+  Callback = function(option)
     currentSellThreshold = option
     if sellfishFeature and sellfishFeature.SetMode then
       sellfishFeature:SetMode(option)
@@ -317,12 +317,11 @@ local sellfish_dd = TabBackpack:Dropdown({
 })
 
 local sellfish_in = TabBackpack:Input({
-    Title = "Sell Delay",
-    Placeholder = "e.g 60 (second)",
-    Desc = "Input delay in seconds."
-    Value = "",
-    Numeric = true,
-    Callback    = function(value)
+  Title       = "Sell Limit",
+  Placeholder = "e.g. 3",
+  Value       = "",
+  Numeric     = true,
+  Callback    = function(value)
     local n = tonumber(value) or 0
     currentSellLimit = n
     if sellfishFeature and sellfishFeature.SetLimit then
@@ -332,10 +331,10 @@ local sellfish_in = TabBackpack:Input({
 })
 
 local sellfish_tgl = TabBackpack:Toggle({
-    Title = "Auto Sell",
-    Desc = "",
-    Default = false,
-    Callback = function(state)
+  Title    = "Auto Sell",
+  Desc     = "Auto Sell when reach limit",
+  Default  = false,
+  Callback = function(state)
     if state then
       if not sellfishFeature then
         sellfishFeature = FeatureManager:LoadFeature("AutoSellFish", {
