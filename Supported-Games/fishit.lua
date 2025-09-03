@@ -158,7 +158,7 @@ Window:CreateTopbarButton("changelog", "newspaper", ShowChangelog, 995)
 --========== TABS ==========
 local TabHome     = Window:Tab({ Title = "Home",     Icon = "house" })
 local TabMain     = Window:Tab({ Title = "Main",     Icon = "gamepad" })
-local TabBackpack = Window:Tab({ Title = "Backpack", Icon = "bag" })
+local TabBackpack = Window:Tab({ Title = "Backpack", Icon = "backpack" })
 local TabShop     = Window:Tab({ Title = "Shop",     Icon = "shopping-bag" })
 local TabTeleport = Window:Tab({ Title = "Teleport", Icon = "map" })
 local TabMisc     = Window:Tab({ Title = "Misc",     Icon = "cog" })
@@ -214,7 +214,7 @@ local autofishmode_dd = TabMain:Dropdown({
     
 local autofish_tgl = TabMain:Toggle({
     Title = "Auto Fishing",
-    Desc = "Automatically fish with selected mode",
+    Desc = "Automatically fishing with selected mode",
     Default = false,
     Callback = function(state) 
         print("[GUI] AutoFish toggle:", state)
@@ -316,8 +316,9 @@ local sellfish_dd = TabBackpack:Dropdown({
 })
 
 local sellfish_in = TabBackpack:Input({
-    Title = "Sell Limit",
-    Placeholder = "e.g 1000",
+    Title = "Sell Delay",
+    Placeholder = "e.g 60 (second)",
+    Desc = "Input delay in seconds."
     Value = "",
     Numeric = true,
     Callback    = function(value)
@@ -331,7 +332,7 @@ local sellfish_in = TabBackpack:Input({
 
 local sellfish_tgl = TabBackpack:Toggle({
     Title = "Auto Sell",
-    Desc = "Auto Sell when reach limit",
+    Desc = "",
     Default = false,
     Callback = function(state)
     if state then
@@ -385,13 +386,13 @@ local autogift_tgl = TabBackpack:Toggle({
 
 --- === Shop === --- 
 --- Item
-local shopitem_sec = TabShop:Section({ 
+local shoprod_sec = TabShop:Section({ 
     Title = "Rod & Item",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
 
-local shopitemrod_ddm = TabShop:Dropdown({
+local shoprod_ddm = TabShop:Dropdown({
     Title = "Select Rod",
     Values = { "Category A", "Category B", "Category C" },
     Value = { "Category A" },
@@ -402,7 +403,7 @@ local shopitemrod_ddm = TabShop:Dropdown({
     end
 })
 
-local shopitemrod_tgl = TabShop:Button({
+local shoprod_tgl = TabShop:Button({
     Title = "Buy Rod",
     Desc = "",
     Locked = false,
@@ -411,7 +412,13 @@ local shopitemrod_tgl = TabShop:Button({
     end
 })
 
-local shopitemitem_ddm = TabShop:Dropdown({
+local shopitem_sec = TabShop:Section({ 
+    Title = "Rod & Item",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local shopitem_ddm = TabShop:Dropdown({
     Title = "Select Item",
     Values = { "Category A", "Category B", "Category C" },
     Value = { "Category A" },
@@ -422,7 +429,7 @@ local shopitemitem_ddm = TabShop:Dropdown({
     end
 })
 
-local shopitemitem_in = TabShop:Input({
+local shopitem_in = TabShop:Input({
     Title = "Quantity",
     Desc = "Item Quantity",
     Value = "",
@@ -433,7 +440,7 @@ local shopitemitem_in = TabShop:Input({
     end
 })
 
-local shopitemitem_btn = TabShop:Button({
+local shopitem_btn = TabShop:Button({
     Title = "Buy Item",
     Desc = "",
     Locked = false,
