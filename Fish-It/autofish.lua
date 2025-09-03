@@ -192,16 +192,9 @@ end
 function AutoFishFeature:EquipRod(slot)
     if not EquipTool then return false end
     
-    local success, result = pcall(function()
+    local success = pcall(function()
         EquipTool:FireServer(slot)
-        return true
     end)
-    
-    if success then
-        print("[AutoFish] Rod equipped")
-    else
-        warn("[AutoFish] Failed to equip rod:", result)
-    end
     
     return success
 end
