@@ -1,23 +1,18 @@
 -- ===========================
--- AUTO FISH FEATURE - FIXED
+-- AUTO FISH FEATURE - OPTIMIZED
 -- File: autofish.lua
 -- ===========================
 
 local AutoFishFeature = {}
 AutoFishFeature.__index = AutoFishFeature
 
--- Safe service access
-local function getService(serviceName)
-    return game:GetService(serviceName)
-end
-
 -- Services
-local Players = getService("Players")
-local ReplicatedStorage = getService("ReplicatedStorage")  
-local RunService = getService("RunService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")  
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
--- Safe network path access with error handling
+-- Safe network path access
 local NetPath = nil
 local EquipTool, ChargeFishingRod, RequestFishing, FishingCompleted
 
@@ -43,35 +38,41 @@ end
 local isRunning = false
 local currentMode = "Perfect"
 local connection = nil
+local fishingConnection = nil
 local controls = {}
 local fishingInProgress = false
 local lastFishTime = 0
 local remotesInitialized = false
 
--- Config based on mode
+-- Fishing detection
+local biteDetectionActive = false
+local castTime = 0
+
+-- Speed-optimized configs
 local FISHING_CONFIGS = {
     ["Perfect"] = {
         chargeTime = 1.0,
-        waitTime = 1.0,
-        rodSlot = 1
+        waitBetween = 0.5,  -- Minimal wait between cycles
+        rodSlot = 1,
+        maxWaitForBite = 8   -- Max wait for fish bite
     },
     ["OK"] = {
-        chargeTime = 0.8,
-        waitTime = 2.0,
-        rodSlot = 1
+        chargeTime = 0.9,
+        waitBetween = 0.3,
+        rodSlot = 1,
+        maxWaitForBite = 6
     },
     ["Mid"] = {
         chargeTime = 0.5,
-        waitTime = 3.0,
-        rodSlot = 1
+        waitBetween = 0.2,
+        rodSlot = 1,
+        maxWaitForBite = 5
     }
 }
 
 -- Initialize
 function AutoFishFeature:Init(guiControls)
     controls = guiControls or {}
-    
-    -- Initialize remotes
     remotesInitialized = initializeRemotes()
     
     if not remotesInitialized then
@@ -85,10 +86,7 @@ end
 
 -- Start fishing
 function AutoFishFeature:Start(config)
-    if isRunning then 
-        print("[AutoFish] Already running")
-        return 
-    end
+    if isRunning then return end
     
     if not remotesInitialized then
         warn("[AutoFish] Cannot start - remotes not initialized")
@@ -98,14 +96,15 @@ function AutoFishFeature:Start(config)
     isRunning = true
     currentMode = config.mode or "Perfect"
     fishingInProgress = false
+    biteDetectionActive = false
     lastFishTime = 0
     
-    print("[AutoFish] Started with mode:", currentMode)
+    print("[AutoFish] Started FAST mode:", currentMode)
     
-    -- Main fishing loop
+    -- Main fishing loop (optimized for speed)
     connection = RunService.Heartbeat:Connect(function()
         if not isRunning then return end
-        self:FishingLoop()
+        self:FastFishingLoop()
     end)
 end
 
@@ -115,188 +114,248 @@ function AutoFishFeature:Stop()
     
     isRunning = false
     fishingInProgress = false
+    biteDetectionActive = false
     
     if connection then
         connection:Disconnect()
         connection = nil
     end
     
+    if fishingConnection then
+        fishingConnection:Disconnect()
+        fishingConnection = nil
+    end
+    
     print("[AutoFish] Stopped")
 end
 
--- Main fishing logic
-function AutoFishFeature:FishingLoop()
-    if fishingInProgress then return end
+-- Optimized fishing loop for maximum speed
+function AutoFishFeature:FastFishingLoop()
+    if fishingInProgress or biteDetectionActive then return end
     
     local currentTime = tick()
     local config = FISHING_CONFIGS[currentMode]
     
-    -- Wait between catches
-    if currentTime - lastFishTime < config.waitTime then
+    -- Minimal wait between cycles
+    if currentTime - lastFishTime < config.waitBetween then
         return
     end
     
     -- Start fishing sequence
     fishingInProgress = true
+    lastFishTime = currentTime
     
     spawn(function()
-        local success = self:ExecuteFishingSequence()
+        local success = self:ExecuteFastFishingSequence()
+        fishingInProgress = false
         
         if success then
-            lastFishTime = tick()
-            print("[AutoFish] Fish caught! Mode:", currentMode)
-        else
-            print("[AutoFish] Fishing failed, retrying in", config.waitTime, "seconds")
+            print("[AutoFish] FAST catch completed!")
         end
-        
-        wait(0.1) -- Small delay before next attempt
-        fishingInProgress = false
     end)
 end
 
--- Execute full fishing sequence
-function AutoFishFeature:ExecuteFishingSequence()
+-- Execute FAST fishing sequence
+function AutoFishFeature:ExecuteFastFishingSequence()
     local config = FISHING_CONFIGS[currentMode]
     
-    print("[AutoFish] Starting fishing sequence...")
-    
-    -- Step 1: Equip rod
+    -- Step 1: Equip rod (no wait)
     if not self:EquipRod(config.rodSlot) then
-        warn("[AutoFish] Failed to equip rod")
         return false
     end
     
-    wait(0.1)
-    
-    -- Step 2: Charge rod
-    local chargeValue = self:ChargeRod(config.chargeTime)
-    if not chargeValue then
-        warn("[AutoFish] Failed to charge rod")
+    -- Step 2: Charge rod immediately
+    if not self:ChargeRod(config.chargeTime) then
         return false
     end
     
-    wait(0.1)
-    
-    -- Step 3: Cast rod
+    -- Step 3: Cast rod immediately  
     if not self:CastRod() then
-        warn("[AutoFish] Failed to cast rod")
         return false
     end
     
-    -- Step 4: Wait for fish and complete
-    return self:WaitAndComplete()
+    -- Step 4: Start bite detection
+    castTime = tick()
+    self:StartBiteDetection(config.maxWaitForBite)
+    
+    return true
 end
 
--- Equip fishing rod
+-- Equip fishing rod (fast)
 function AutoFishFeature:EquipRod(slot)
     if not EquipTool then return false end
     
-    local success, result = pcall(function()
+    local success = pcall(function()
         EquipTool:FireServer(slot)
-        return true
     end)
-    
-    if success then
-        print("[AutoFish] Rod equipped")
-    else
-        warn("[AutoFish] Failed to equip rod:", result)
-    end
     
     return success
 end
 
--- Charge fishing rod
+-- Charge fishing rod (fast)
 function AutoFishFeature:ChargeRod(chargeTime)
     if not ChargeFishingRod then return false end
     
     local success, result = pcall(function()
-        -- Generate realistic charge value
-        local chargeValue = tick() + math.random(100, 300) / 1000
-        local response = ChargeFishingRod:InvokeServer(chargeValue)
-        return response
+        local chargeValue = tick() + (chargeTime * 1000) -- Convert to milliseconds
+        return ChargeFishingRod:InvokeServer(chargeValue)
     end)
     
-    if success then
-        wait(chargeTime)
-        print("[AutoFish] Rod charged")
-        return result
-    else
-        warn("[AutoFish] Failed to charge rod:", result)
-        return nil
-    end
+    return success
 end
 
--- Cast rod to water
+-- Cast rod (fast)
 function AutoFishFeature:CastRod()
     if not RequestFishing then return false end
     
-    local success, result = pcall(function()
-        -- Random cast direction for natural behavior
-        local x = math.random(-150, 150) / 100  -- -1.5 to 1.5
-        local z = math.random(80, 120) / 100    -- 0.8 to 1.2
-        
-        local response = RequestFishing:InvokeServer(x, z)
-        return response
+    local success = pcall(function()
+        -- Fixed good cast position
+        local x = -1.2  -- Consistent position
+        local z = 0.8
+        return RequestFishing:InvokeServer(x, z)
     end)
     
-    if success then
-        print("[AutoFish] Rod cast")
-        return result
-    else
-        warn("[AutoFish] Failed to cast rod:", result)
-        return false
-    end
+    return success
 end
 
--- Wait for fish and complete catch
-function AutoFishFeature:WaitAndComplete()
+-- Start bite detection system
+function AutoFishFeature:StartBiteDetection(maxWaitTime)
+    if biteDetectionActive then return end
+    
+    biteDetectionActive = true
+    
+    spawn(function()
+        -- Method 1: Check for UI elements (tanda seru)
+        local detected = self:DetectFishBite(maxWaitTime)
+        
+        if detected and isRunning then
+            wait(0.1) -- Tiny delay for stability
+            self:CompleteInstantCatch()
+        end
+        
+        biteDetectionActive = false
+    end)
+end
+
+-- Detect fish bite via multiple methods
+function AutoFishFeature:DetectFishBite(maxWaitTime)
+    local startTime = tick()
+    local player = LocalPlayer
+    
+    while tick() - startTime < maxWaitTime and isRunning and biteDetectionActive do
+        -- Method 1: Check character for fishing tool state
+        if player.Character then
+            local tool = player.Character:FindFirstChildOfClass("Tool")
+            if tool then
+                -- Check tool properties that might indicate bite
+                local handle = tool:FindFirstChild("Handle")
+                if handle then
+                    -- Some games modify tool properties on bite
+                    -- This is game-specific, might need adjustment
+                end
+            end
+        end
+        
+        -- Method 2: Check PlayerGui for bite indicators
+        local playerGui = player:FindFirstChild("PlayerGui")
+        if playerGui then
+            -- Look for fishing UI elements (tanda seru UI)
+            for _, gui in pairs(playerGui:GetChildren()) do
+                if gui:IsA("ScreenGui") then
+                    local found = self:CheckGuiForBiteIndicator(gui)
+                    if found then
+                        print("[AutoFish] Bite detected via GUI!")
+                        return true
+                    end
+                end
+            end
+        end
+        
+        -- Method 3: Time-based detection (fallback)
+        local elapsedTime = tick() - castTime
+        if elapsedTime >= 2 and elapsedTime <= maxWaitTime then
+            -- Fish typically bite within 2-8 seconds
+            print("[AutoFish] Bite assumed (time-based)")
+            return true
+        end
+        
+        wait(0.1) -- Check every 100ms
+    end
+    
+    return false
+end
+
+-- Check GUI for bite indicators
+function AutoFishFeature:CheckGuiForBiteIndicator(gui)
+    -- Look for exclamation mark or fishing indicators
+    local function searchForIndicator(obj)
+        if not obj then return false end
+        
+        -- Check for common bite indicator patterns
+        if obj.Name:lower():find("exclamation") or 
+           obj.Name:lower():find("bite") or
+           obj.Name:lower():find("fish") then
+            if obj:IsA("GuiObject") and obj.Visible then
+                return true
+            end
+        end
+        
+        -- Check text for "!" or fishing terms
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            local text = obj.Text:lower()
+            if text:find("!") or text:find("bite") or text:find("pull") then
+                return obj.Visible
+            end
+        end
+        
+        -- Recursively check children
+        for _, child in pairs(obj:GetChildren()) do
+            if searchForIndicator(child) then
+                return true
+            end
+        end
+        
+        return false
+    end
+    
+    return searchForIndicator(gui)
+end
+
+-- Complete catch instantly
+function AutoFishFeature:CompleteInstantCatch()
     if not FishingCompleted then return false end
     
-    -- Wait for fish bite (realistic timing)
-    local waitTime = math.random(200, 400) / 100  -- 2-4 seconds
-    wait(waitTime)
-    
-    -- Complete fishing
-    local success, result = pcall(function()
+    local success = pcall(function()
         FishingCompleted:FireServer()
-        return true
     end)
     
     if success then
-        print("[AutoFish] Fishing completed")
-    else
-        warn("[AutoFish] Failed to complete fishing:", result)
+        print("[AutoFish] INSTANT catch completed!")
     end
     
     return success
 end
 
--- Get fishing status
+-- Get status
 function AutoFishFeature:GetStatus()
     return {
         running = isRunning,
         mode = currentMode,
         inProgress = fishingInProgress,
+        detecting = biteDetectionActive,
         lastCatch = lastFishTime,
         remotesReady = remotesInitialized
     }
 end
 
--- Update mode during runtime
+-- Update mode
 function AutoFishFeature:SetMode(mode)
     if FISHING_CONFIGS[mode] then
         currentMode = mode
-        print("[AutoFish] Mode changed to:", mode)
+        print("[AutoFish] FAST mode changed to:", mode)
         return true
-    else
-        warn("[AutoFish] Invalid mode:", mode)
-        return false
     end
-end
-
--- Check if feature is ready
-function AutoFishFeature:IsReady()
-    return remotesInitialized and EquipTool and ChargeFishingRod and RequestFishing and FishingCompleted
+    return false
 end
 
 -- Cleanup
@@ -307,5 +366,4 @@ function AutoFishFeature:Cleanup()
     remotesInitialized = false
 end
 
--- Return feature table
 return AutoFishFeature
