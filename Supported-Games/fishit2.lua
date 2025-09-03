@@ -524,6 +524,106 @@ local teleplayer_btn = TabTeleport:Button({
     end
 })
 
+--- === Misc === ---
+--- Server
+local servutils_sec = TabMisc:Section({ 
+    Title = "Join Server",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local servjoin_in = TabMisc:Input({
+    Title = "Job Id",
+    Desc = "Input Server Job Id",
+    Value = "",
+    Placeholder = "000-000-000",
+    Type = "Input", 
+    Callback = function(input) 
+        print("delay entered: " .. input)
+    end
+})
+
+local servjoin_btn = TabMisc:Button({
+    Title = "Join Server",
+    Desc = "",
+    Locked = false,
+    Callback = function()
+        print("clicked")
+    end
+})
+
+local servcopy_btn = TabMisc:Button({
+    Title = "Copy Server ID",
+    Desc = "Copy Current Server Job ID",
+    Locked = false,
+    Callback = function()
+        print("clicked")
+    end
+})
+
+--- Server Hop
+local servhop_sec = TabMisc:Section({ 
+    Title = "Hop Server",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local servhop_dd = TabMisc:Dropdown({
+    Title = "Select Server Luck",
+    Values = { "Category A", "Category B", "Category C" },
+    Value = "Category A",
+    Callback = function(option) 
+        print("Category selected: " .. option) 
+    end
+})
+
+local servhop_tgl = TabMisc:Toggle({
+    Title = "Auto Hop Server",
+    Desc  = "Auto Hop until found desired Server",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
+
+
+--- Webhook
+local webhookfish_sec = TabMisc:Section({ 
+    Title = "Webhook",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local webhookfish_in = TabMisc:Input({
+    Title = "Webhook URL",
+    Desc = "Input Webhook URL",
+    Value = "",
+    Placeholder = "discord.gg//",
+    Type = "Input", 
+    Callback = function(input) 
+        print("delay entered: " .. input)
+    end
+})
+
+local webhookfish_dd = TabMisc:Dropdown({
+    Title = "Select Fish",
+    Values = { "Category A", "Category B", "Category C" },
+    Value = { "Category A" },
+    Multi = true,
+    AllowNone = true,
+    Callback = function(option) 
+        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    end
+})
+
+local webhookfish_tgl = TabMisc:Toggle({
+    Title = "Webhook",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
+
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
     Window:OnClose(function()
