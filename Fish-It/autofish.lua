@@ -171,7 +171,7 @@ function AutoFishFeature:ExecuteSpamFishingSequence()
     if not self:EquipRod(config.rodSlot) then
         return false
     end
-
+    
     -- Step 2: Charge rod
     if not self:ChargeRod(config.chargeTime) then
         return false
@@ -224,7 +224,7 @@ function AutoFishFeature:CastRod()
     return success
 end
 
--- Start spamming FishingCompleted with leaderstats detection
+-- Start spamming FishingCompleted
 function AutoFishFeature:StartCompletionSpam(delay, maxTime)
     if spamActive then return end
     
@@ -232,19 +232,19 @@ function AutoFishFeature:StartCompletionSpam(delay, maxTime)
     completionCheckActive = true
     local spamStartTime = tick()
     
-    print("[AutoFish] Starting completion SPAM with leaderstats detection...")
+    print("[AutoFish] Starting completion SPAM...")
     
-    -- Update caught count before spam
-    self:UpdateCaughtCount()
+    -- Update backpack count before spam
+    self:UpdateBackpackCount()
     
     spawn(function()
         while spamActive and isRunning and (tick() - spamStartTime) < maxTime do
             -- Fire completion
             local fired = self:FireCompletion()
             
-            -- Check if fishing completed using leaderstats
-            if self:CheckFishingCompletedByLeaderstats() then
-                print("[AutoFish] Fish caught detected via leaderstats!")
+            -- Check if fishing completed
+            if self:CheckFishingCompleted() then
+                print("[AutoFish] Fish caught via SPAM method!")
                 break
             end
             
@@ -272,69 +272,52 @@ function AutoFishFeature:FireCompletion()
     return success
 end
 
--- Check if fishing completed using leaderstats (PRIMARY METHOD)
-function AutoFishFeature:CheckFishingCompletedByLeaderstats()
-    local currentCaught = self:GetCaughtCount()
-    
-    -- If caught count increased, fish was successfully caught
-    if currentCaught > lastCaughtCount then
-        lastCaughtCount = currentCaught
-        print("[AutoFish] Leaderstats detection: Caught increased to", currentCaught)
-        return true
-    end
-    
-    return false
-end
-
--- Get current caught count from leaderstats
-function AutoFishFeature:GetCaughtCount()
-    local caught = 0
-    
-    pcall(function()
-        -- Access Player[Username].leaderstats.Caught.Data.Value
-        local player = LocalPlayer
-        local leaderstats = player:FindFirstChild("leaderstats")
-        
-        if leaderstats then
-            local caughtStat = leaderstats:FindFirstChild("Caught")
-            if caughtStat then
-                local data = caughtStat:FindFirstChild("Data")
-                if data then
-                    local value = data:FindFirstChild("Value")
-                    if value then
-                        caught = tonumber(value.Value) or 0
-                    end
-                end
-            end
-        end
-    end)
-    
-    return caught
-end
-
--- Update caught count
-function AutoFishFeature:UpdateCaughtCount()
-    lastCaughtCount = self:GetCaughtCount()
-    print("[AutoFish] Updated caught count:", lastCaughtCount)
-end
-
--- Fallback: Check if fishing completed by other methods
+-- Check if fishing completed successfully
 function AutoFishFeature:CheckFishingCompleted()
-    -- Primary method: leaderstats
-    if self:CheckFishingCompletedByLeaderstats() then
+    -- Method 1: Check backpack item count increase
+    local currentCount = self:GetBackpackItemCount()
+    if currentCount > lastBackpackCount then
+        lastBackpackCount = currentCount
         return true
     end
     
-    -- Fallback method: Check tool state
+    -- Method 2: Check character tool state
     if LocalPlayer.Character then
         local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
         if not tool then
-            -- Tool unequipped might indicate completion
-            return false -- Don't rely on this alone for spam method
+            -- Tool unequipped = fishing might be done
+            return false -- Don't rely on this alone
         end
     end
     
+    -- Method 3: Check player stats (if game has fishing stats)
+    -- This is game-specific, might need adjustment
+    
     return false
+end
+
+-- Update backpack count
+function AutoFishFeature:UpdateBackpackCount()
+    lastBackpackCount = self:GetBackpackItemCount()
+end
+
+-- Get current backpack item count
+function AutoFishFeature:GetBackpackItemCount()
+    local count = 0
+    
+    if LocalPlayer.Backpack then
+        count = count + #LocalPlayer.Backpack:GetChildren()
+    end
+    
+    if LocalPlayer.Character then
+        for _, child in pairs(LocalPlayer.Character:GetChildren()) do
+            if child:IsA("Tool") then
+                count = count + 1
+            end
+        end
+    end
+    
+    return count
 end
 
 -- Get status
@@ -345,7 +328,6 @@ function AutoFishFeature:GetStatus()
         inProgress = fishingInProgress,
         spamming = spamActive,
         lastCatch = lastFishTime,
-        caughtCount = lastCaughtCount,
         backpackCount = lastBackpackCount,
         remotesReady = remotesInitialized
     }
@@ -359,44 +341,6 @@ function AutoFishFeature:SetMode(mode)
         return true
     end
     return false
-end
-
--- Get leaderstats info for debugging
-function AutoFishFeature:GetLeaderstatsInfo()
-    local info = {
-        hasLeaderstats = false,
-        hasCaught = false,
-        hasData = false,
-        hasValue = false,
-        currentValue = 0
-    }
-    
-    pcall(function()
-        local player = LocalPlayer
-        local leaderstats = player:FindFirstChild("leaderstats")
-        
-        if leaderstats then
-            info.hasLeaderstats = true
-            local caughtStat = leaderstats:FindFirstChild("Caught")
-            
-            if caughtStat then
-                info.hasCaught = true
-                local data = caughtStat:FindFirstChild("Data")
-                
-                if data then
-                    info.hasData = true
-                    local value = data:FindFirstChild("Value")
-                    
-                    if value then
-                        info.hasValue = true
-                        info.currentValue = tonumber(value.Value) or 0
-                    end
-                end
-            end
-        end
-    end)
-    
-    return info
 end
 
 -- Cleanup
