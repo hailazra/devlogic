@@ -32,7 +32,7 @@ local FeatureManager = {}
 FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
-    AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
+    --AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
     --AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua"
 }
 
@@ -95,7 +95,7 @@ local Window = WindUI:CreateWindow({
 WindUI:SetFont("rbxasset://12187366657")
 
 Window:EditOpenButton({
-    Title = "",
+    Title = "hj",
     Icon = "rbxassetid://73063950477508",
     CornerRadius = UDim.new(0,1),
     StrokeThickness = 1,
