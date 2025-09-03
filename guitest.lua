@@ -12,7 +12,7 @@ WindUI.Themes["DarkRedDL"] = {
     Text        = "#F4F4F5",
     Placeholder = "#5A0F0F",
     Background  = "#09090B",
-    Button      = "#1A1A1E",
+    Button      = "#09090B",
     Icon        = "#5A0F0F",
 
 }
@@ -28,6 +28,7 @@ local Window = WindUI:CreateWindow({
     Theme         = "DarkRedDL",
     Resizable     = false,
     SideBarWidth  = 120,
+    Background    = "rbxassetid://90720325629824",
     HideSearchBar = true,
 })
 
