@@ -36,7 +36,8 @@ FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
     AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua",
-    AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua"
+    AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua",
+    AutoTeleport    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -484,8 +485,8 @@ local teleisland_sec = TabTeleport:Section({
 
 local teleisland_dd = TabTeleport:Dropdown({
     Title = "Select Island",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = "Category A",
+    Values = { "Fisherman Island", "Kohana", "Kohana Volcano", "Coral Reefs", "Esoteric Depths", "Tropical Grove", "Crater Island", "Lost Isle", },
+    Value = "Fisherman Island",
     Callback = function(option) 
         print("Category selected: " .. option) 
     end
@@ -496,7 +497,21 @@ local teleisland_btn = TabTeleport:Button({
     Desc = "",
     Locked = false,
     Callback = function()
-        print("clicked")
+        local islandName = teleisland_dd.Value
+        -- coba ambil instance feature yang sudah dimuat
+        local tpFeature = FeatureManager:GetFeature("AutoTeleport")
+        -- jika belum ada, muat fitur dengan kontrol yang diperlukan
+        if not tpFeature then
+            tpFeature = FeatureManager:LoadFeature("AutoTeleport", {
+                dropdown = teleisland_dd,
+                button   = teleisland_btn,
+            })
+        end
+        -- gunakan modul untuk set nama pulau dan teleport
+        if tpFeature then
+            if tpFeature.SetIsland then tpFeature:SetIsland(islandName) end
+            if tpFeature.Teleport then tpFeature:Teleport() end
+        end
     end
 })
 
