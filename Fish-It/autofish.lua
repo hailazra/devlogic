@@ -171,8 +171,6 @@ function AutoFishFeature:ExecuteSpamFishingSequence()
     if not self:EquipRod(config.rodSlot) then
         return false
     end
-    
-    wait(0.2)
 
     -- Step 2: Charge rod
     if not self:ChargeRod(config.chargeTime) then
