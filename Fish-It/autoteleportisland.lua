@@ -155,9 +155,9 @@ function AutoTeleportIsland:Teleport(targetIsland)
     else
         warn("[AutoTeleportIsland] Failed to teleport to:", island)
         
-        -- Notify GUI if available
-        if _G.WindUI then
-            _G.WindUI:Notify({
+        -- Notify GUI if available (using WindUI from outside scope)
+        if WindUI then
+            WindUI:Notify({
                 Title = "Teleport Failed",
                 Content = "Could not teleport to " .. island,
                 Icon = "x",
