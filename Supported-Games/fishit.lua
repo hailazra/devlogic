@@ -52,8 +52,9 @@ function FeatureManager:LoadFeature(featureName, controls)
         return nil 
     end
 
-    local success, feature = pcall(function()
-        return loadstring(game:HttpGet(url))()
+     local success, feature = pcall(function()
+        local source = game:GetService("HttpService"):GetAsync(url)
+        return loadstring(source)()
     end)
 
     if success and type(feature) == "table" and feature.Init then
