@@ -1,7 +1,14 @@
 -- ===========================
--- AUTO SELL FISH FEATURE (tanpa Status Panel & mode configs)
+-- AUTO SELL FISH FEATURE
 -- File: autosellfish.lua
--- ===========================
+--
+-- This module automates selling fish in Fish It. It exposes a minimal API
+-- tailored for integration with the WindUI GUI. The script watches the
+-- player's backpack, and when the number of fish (represented as Tools)
+-- meets or exceeds a user‑defined limit, it triggers a remote call to sell
+-- all fish. It also allows adjusting the rarity threshold via a remote
+-- call. To avoid flooding the server with redundant threshold changes, a
+-- simple debouncing mechanism is used.
 
 local AutoSellFish = {}
 AutoSellFish.__index = AutoSellFish
@@ -12,173 +19,76 @@ local Replicated     = game:GetService("ReplicatedStorage")
 local RunService     = game:GetService("RunService")
 local LocalPlayer    = Players.LocalPlayer
 
--- Network setup
+-- Network objects (initialized in Init)
 local NetPath = nil
 local UpdateAutoSellThresholdRF, SellAllItemsRF
 
-local function initializeRemotes()
-    local ok = pcall(function()
-        NetPath = Replicated:WaitForChild("Packages", 5)
-            :WaitForChild("_Index", 5)
-            :WaitForChild("sleitnick_net@0.2.0", 5)
-            :WaitForChild("net", 5)
-
-        UpdateAutoSellThresholdRF = NetPath:WaitForChild("RF/UpdateAutoSellThreshold", 5)
-        SellAllItemsRF            = NetPath:WaitForChild("RF/SellAllItems", 5)
-    end)
-    return ok
-end
-
--- Feature state
-local isRunning            = false
-local connection           = nil
-local controls             = {}
-local remotesInitialized   = false
-
--- Threshold state
-local currentMode          = "Legendary" -- "Legendary" | "Mythic" | "Secret"
-local _lastAppliedMode     = nil
-
--- Limit-based auto sell
-local limitEnabled         = true   -- default: ON sampai kamu matikan
-local limitValue           = 50     -- override via Start(config) atau SetLimit
-local lastInventoryCount   = 0
-
--- Loop pacing (bukan "mode", cuma konstanta)
-local WAIT_BETWEEN         = 0.15   -- detik; bisa override via Start(config.waitBetween)
-
--- Rarity mapping -> angka sesuai info kamu
+-- Rarity threshold enumeration. These numeric codes must match the
+-- server‑side expectations for UpdateAutoSellThreshold.
 local THRESHOLD_ENUM = {
-    ["Legendary"] = 5,
-    ["Mythic"]    = 6,
-    ["Secret"]    = 7,
+    Legendary = 5,
+    Mythic    = 6,
+    Secret    = 7,
 }
 
--- ===========================
--- Initialize
--- ===========================
-function AutoSellFish:Init(guiControls)
-    controls = guiControls or {}
-    remotesInitialized = initializeRemotes()
+-- Internal state
+local isRunning          = false
+local connection         = nil
+local remotesInitialized = false
+local currentMode        = "Legendary" -- default rarity threshold
+local lastAppliedMode    = nil         -- used to debounce threshold updates
+local limitEnabled       = true        -- auto sell will run when true
+local limitValue         = 0           -- number of fish (Tools) to trigger sell
+local lastInventoryCount = 0           -- cached count of Tools in backpack
 
-    if not remotesInitialized then
-        warn("[AutoSellFish] Failed to initialize remotes")
-        return false
+-- Interval between loop iterations (in seconds). A small wait
+-- prevents the loop from overloading the Heartbeat event.
+local WAIT_BETWEEN = 0.15
+local _lastTick    = 0
+
+--------------------------------------------------------------------------
+-- Helpers
+--------------------------------------------------------------------------
+
+-- Count how many fish (Tools) are currently in the player's Backpack.
+-- The game treats fish as Tool instances in Backpack. Other items in
+-- Backpack will also be counted, so only fish should be stored there.
+local function getInventoryItemCount()
+    local bp = LocalPlayer and LocalPlayer:FindFirstChild("Backpack")
+    if not bp then return 0 end
+    local count = 0
+    for _, child in ipairs(bp:GetChildren()) do
+        if child:IsA("Tool") then
+            count = count + 1
+        end
     end
-
-    self:UpdateInventoryCount()
-    print("[AutoSellFish] Initialized")
-    return true
+    return count
 end
 
--- ===========================
--- Start
--- config: { threshold="Legendary|Mythic|Secret", limit:number, autoOnLimit:boolean, waitBetween:number }
--- ===========================
-function AutoSellFish:Start(config)
-    if isRunning then return end
-    if not remotesInitialized then
-        warn("[AutoSellFish] Cannot start - remotes not initialized")
-        return
-    end
-
-    if config then
-        if THRESHOLD_ENUM[config.threshold] then
-            currentMode = config.threshold
-        end
-        if typeof(config.limit) == "number" then
-            limitValue = math.max(0, math.floor(config.limit))
-        end
-        if typeof(config.autoOnLimit) == "boolean" then
-            limitEnabled = config.autoOnLimit
-        end
-        if typeof(config.waitBetween) == "number" then
-            WAIT_BETWEEN = math.max(0.01, config.waitBetween)
-        end
-    end
-
-    -- apply threshold sekali di awal (debounced)
-    self:_applyThreshold(currentMode)
-
-    isRunning = true
-    connection = RunService.Heartbeat:Connect(function()
-        if not isRunning then return end
-        self:SellLoop()
-    end)
-
-    print(("[AutoSellFish] Started | Threshold=%s | Limit=%d | AutoOnLimit=%s | Wait=%.2fs")
-        :format(currentMode, limitValue, tostring(limitEnabled), WAIT_BETWEEN))
+-- Update the cached inventory count
+function AutoSellFish:UpdateInventoryCount()
+    lastInventoryCount = getInventoryItemCount()
 end
 
--- ===========================
--- Stop
--- ===========================
-function AutoSellFish:Stop()
-    if not isRunning then return end
-    isRunning = false
-
-    if connection then
-        connection:Disconnect()
-        connection = nil
-    end
-
-    print("[AutoSellFish] Stopped")
-end
-
--- ===========================
--- Main loop
--- ===========================
-local _lastTick = 0
-function AutoSellFish:SellLoop()
-    local now = tick()
-    if now - _lastTick < WAIT_BETWEEN then
-        return
-    end
-    _lastTick = now
-
-    -- pastikan threshold sesuai (debounce)
-    self:_applyThreshold(currentMode)
-
-    -- cek limit backpack (Tool saja, di Backpack)
-    if limitEnabled then
-        self:UpdateInventoryCount()
-        if lastInventoryCount >= limitValue then
-            local ok = self:PerformSellAll()
-            if ok then
-                -- beri waktu server proses, lalu refresh count
-                task.wait(0.1)
-                self:UpdateInventoryCount()
-            end
-        end
-    end
-end
-
--- ===========================
--- Threshold apply (debounced)
--- ===========================
+-- Apply the rarity threshold on the server. This function is debounced
+-- using `lastAppliedMode` to avoid sending the same value repeatedly.
 function AutoSellFish:_applyThreshold(mode)
     if not UpdateAutoSellThresholdRF then return false end
-    if _lastAppliedMode == mode then return true end -- sudah sama, skip
-
+    if lastAppliedMode == mode then return true end
     local code = THRESHOLD_ENUM[mode]
     if not code then return false end
-
     local ok = pcall(function()
         UpdateAutoSellThresholdRF:InvokeServer(code)
     end)
-
     if ok then
-        _lastAppliedMode = mode
-        -- print("[AutoSellFish] Threshold applied:", mode)
+        lastAppliedMode = mode
     else
-        warn("[AutoSellFish] Failed to apply threshold:", mode)
+        warn("[AutoSellFish] Failed to apply threshold: " .. tostring(mode))
     end
     return ok
 end
 
--- ===========================
--- Sell All
--- ===========================
+-- Trigger the remote call to sell all fish. Returns true on success.
 function AutoSellFish:PerformSellAll()
     if not SellAllItemsRF then return false end
     local ok = pcall(function()
@@ -190,61 +100,129 @@ function AutoSellFish:PerformSellAll()
     return ok
 end
 
--- ===========================
--- Inventory utils (Tool di Backpack SAJA)
--- ===========================
-function AutoSellFish:UpdateInventoryCount()
-    lastInventoryCount = self:GetInventoryItemCount()
+-- Initialize remote references. Returns true on success.
+local function initializeRemotes()
+    local success, err = pcall(function()
+        NetPath = Replicated:WaitForChild("Packages", 5)
+            :WaitForChild("_Index", 5)
+            :WaitForChild("sleitnick_net@0.2.0", 5)
+            :WaitForChild("net", 5)
+        UpdateAutoSellThresholdRF = NetPath:WaitForChild("RF/UpdateAutoSellThreshold", 5)
+        SellAllItemsRF            = NetPath:WaitForChild("RF/SellAllItems", 5)
+    end)
+    return success
 end
 
-function AutoSellFish:GetInventoryItemCount()
-    local count = 0
-    local bp = LocalPlayer and LocalPlayer:FindFirstChild("Backpack")
-    if not bp then return 0 end
+--------------------------------------------------------------------------
+-- Public API
+--------------------------------------------------------------------------
 
-    for _, child in ipairs(bp:GetChildren()) do
-        if child:IsA("Tool") then
-            count += 1
-        end
+-- Init must be called before using the module. Optionally accepts a table
+-- of GUI controls (not used by this module but provided for API parity).
+function AutoSellFish:Init(guiControls)
+    remotesInitialized = initializeRemotes()
+    if not remotesInitialized then
+        warn("[AutoSellFish] Failed to initialize remotes")
+        return false
     end
-    return count
-end
-
--- ===========================
--- Setters (dipanggil dari GUI)
--- ===========================
-function AutoSellFish:SetMode(mode)
-    if not THRESHOLD_ENUM[mode] then return false end
-    currentMode = mode
-    -- apply segera, tetap didebounce internalnya
-    return self:_applyThreshold(mode)
-end
-
-function AutoSellFish:SetLimit(value)
-    if typeof(value) ~= "number" then return false end
-    limitValue = math.max(0, math.floor(value))
+    self:UpdateInventoryCount()
     return true
 end
 
+-- Start the automation. Accepts a config table:
+--  threshold   : string ("Legendary", "Mythic", "Secret")
+--  limit       : number (fish count to trigger sell)
+--  autoOnLimit : boolean (enable/disable auto sell on limit)
+function AutoSellFish:Start(config)
+    if isRunning then return end
+    if not remotesInitialized then
+        warn("[AutoSellFish] Cannot start - remotes not initialized")
+        return
+    end
+    if config then
+        if THRESHOLD_ENUM[config.threshold] then
+            currentMode = config.threshold
+        end
+        if type(config.limit) == "number" then
+            limitValue = math.max(0, math.floor(config.limit))
+        end
+        if type(config.autoOnLimit) == "boolean" then
+            limitEnabled = config.autoOnLimit
+        end
+    end
+    -- Apply threshold once on start
+    self:_applyThreshold(currentMode)
+    isRunning = true
+    connection = RunService.Heartbeat:Connect(function()
+        if not isRunning then return end
+        self:_loop()
+    end)
+end
+
+-- Stop the automation and disconnect events.
+function AutoSellFish:Stop()
+    if not isRunning then return end
+    isRunning = false
+    if connection then
+        connection:Disconnect()
+        connection = nil
+    end
+end
+
+-- Cleanup resets internal state. Should be called when the feature is
+-- unloaded from the GUI.
+function AutoSellFish:Cleanup()
+    self:Stop()
+    remotesInitialized = false
+end
+
+-- Set the rarity threshold ("Legendary", "Mythic", "Secret"). Returns true
+-- if the threshold is valid.
+function AutoSellFish:SetMode(mode)
+    if not THRESHOLD_ENUM[mode] then return false end
+    currentMode = mode
+    -- Apply immediately; debounced internally
+    return self:_applyThreshold(mode)
+end
+
+-- Set the limit at which auto sell triggers. Must be non-negative.
+function AutoSellFish:SetLimit(n)
+    if type(n) ~= "number" then return false end
+    limitValue = math.max(0, math.floor(n))
+    return true
+end
+
+-- Enable or disable automatic selling when the limit is reached.
 function AutoSellFish:SetAutoSellOnLimit(enabled)
     limitEnabled = not not enabled
     return true
 end
 
-function AutoSellFish:SetWaitBetween(sec)
-    if typeof(sec) ~= "number" then return false end
-    WAIT_BETWEEN = math.max(0.01, sec)
-    return true
-end
+--------------------------------------------------------------------------
+-- Internal loop
+--------------------------------------------------------------------------
 
--- ===========================
--- Cleanup
--- ===========================
-function AutoSellFish:Cleanup()
-    print("[AutoSellFish] Cleaning up...")
-    self:Stop()
-    controls           = {}
-    remotesInitialized = false
+-- The heartbeat loop checks whether the fish count meets the limit and
+-- triggers a sell if necessary. It also reapplies the threshold as needed.
+function AutoSellFish:_loop()
+    local now = tick()
+    if now - _lastTick < WAIT_BETWEEN then
+        return
+    end
+    _lastTick = now
+    -- Ensure threshold is applied (debounced)
+    self:_applyThreshold(currentMode)
+    -- Auto sell on limit
+    if limitEnabled then
+        self:UpdateInventoryCount()
+        if lastInventoryCount >= limitValue and limitValue > 0 then
+            if self:PerformSellAll() then
+                -- Allow some time for the server to process the sale
+                task.wait(0.1)
+                self:UpdateInventoryCount()
+            end
+        end
+    end
 end
 
 return AutoSellFish
