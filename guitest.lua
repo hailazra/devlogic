@@ -6,14 +6,14 @@ local WindUI = loadstring(game:HttpGet(
 
 -- Custom Theme: DarkPurple
 WindUI.Themes["DarkRedDL"] = {
-    Accent      = "#EF4444", -- merah utama (aksi/selected/slider fill)
-    Dialog      = "#111114", -- panel/elevated surface
-    Outline     = "#27272A", -- border/garis
-    Text        = "#F4F4F5", -- teks utama
-    Placeholder = "#6B7280", -- teks placeholder
-    Background  = "#0A0A0B", -- latar utama (near-black)
-    Button      = "#18181B", -- default button / kontainer elemen
-    Icon        = "#A1A1AA", -- ikon netral
+    Accent      = "#5A0F0F", -- lebih gelap, nuansa oxblood/wine
+    Dialog      = "#0F0F12",
+    Outline     = "#5A0F0F",
+    Text        = "#EAEAF0",
+    Placeholder = "#6B7280",
+    Background  = "#09090B",
+    Button      = "#16161A",
+    Icon        = "#5A0F0F",
 
 }
 
