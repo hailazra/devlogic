@@ -218,8 +218,8 @@ function AutoFishFeature:CastRod()
     if not RequestFishing then return false end
     
     local success = pcall(function()
-        local x = -0.57
-        local z = 0.99
+        local x = -1.2
+        local z = 0.9
         return RequestFishing:InvokeServer(x, z)
     end)
     
