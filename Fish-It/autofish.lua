@@ -1,5 +1,5 @@
 -- ===========================
--- AUTO FISH FEATURE - OPTIMIZED
+-- AUTO FISH FEATURE - SPAM METHOD
 -- File: autofish.lua
 -- ===========================
 
@@ -12,7 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
--- Safe network path access
+-- Network setup
 local NetPath = nil
 local EquipTool, ChargeFishingRod, RequestFishing, FishingCompleted
 
@@ -38,35 +38,39 @@ end
 local isRunning = false
 local currentMode = "Perfect"
 local connection = nil
-local fishingConnection = nil
+local spamConnection = nil
 local controls = {}
 local fishingInProgress = false
 local lastFishTime = 0
 local remotesInitialized = false
 
--- Fishing detection
-local biteDetectionActive = false
-local castTime = 0
+-- Spam and completion tracking
+local spamActive = false
+local completionCheckActive = false
+local lastBackpackCount = 0
 
--- Speed-optimized configs
+-- Rod-specific configs
 local FISHING_CONFIGS = {
     ["Perfect"] = {
         chargeTime = 1.0,
-        waitBetween = 0.5,  -- Minimal wait between cycles
+        waitBetween = 0.5,
         rodSlot = 1,
-        maxWaitForBite = 8   -- Max wait for fish bite
+        spamDelay = 0.1,      -- Spam every 100ms
+        maxSpamTime = 10      -- Stop spam after 10s
     },
     ["OK"] = {
         chargeTime = 0.9,
         waitBetween = 0.3,
         rodSlot = 1,
-        maxWaitForBite = 6
+        spamDelay = 0.1,
+        maxSpamTime = 8
     },
     ["Mid"] = {
         chargeTime = 0.5,
         waitBetween = 0.2,
         rodSlot = 1,
-        maxWaitForBite = 5
+        spamDelay = 0.1,
+        maxSpamTime = 6
     }
 }
 
@@ -76,11 +80,14 @@ function AutoFishFeature:Init(guiControls)
     remotesInitialized = initializeRemotes()
     
     if not remotesInitialized then
-        warn("[AutoFish] Failed to initialize network remotes")
+        warn("[AutoFish] Failed to initialize remotes")
         return false
     end
     
-    print("[AutoFish] Initialized successfully")
+    -- Initialize backpack count for completion detection
+    self:UpdateBackpackCount()
+    
+    print("[AutoFish] Initialized with SPAM method")
     return true
 end
 
@@ -96,15 +103,15 @@ function AutoFishFeature:Start(config)
     isRunning = true
     currentMode = config.mode or "Perfect"
     fishingInProgress = false
-    biteDetectionActive = false
+    spamActive = false
     lastFishTime = 0
     
-    print("[AutoFish] Started FAST mode:", currentMode)
+    print("[AutoFish] Started SPAM method - Mode:", currentMode)
     
-    -- Main fishing loop (optimized for speed)
+    -- Main fishing loop
     connection = RunService.Heartbeat:Connect(function()
         if not isRunning then return end
-        self:FastFishingLoop()
+        self:SpamFishingLoop()
     end)
 end
 
@@ -114,29 +121,30 @@ function AutoFishFeature:Stop()
     
     isRunning = false
     fishingInProgress = false
-    biteDetectionActive = false
+    spamActive = false
+    completionCheckActive = false
     
     if connection then
         connection:Disconnect()
         connection = nil
     end
     
-    if fishingConnection then
-        fishingConnection:Disconnect()
-        fishingConnection = nil
+    if spamConnection then
+        spamConnection:Disconnect()
+        spamConnection = nil
     end
     
-    print("[AutoFish] Stopped")
+    print("[AutoFish] Stopped SPAM method")
 end
 
--- Optimized fishing loop for maximum speed
-function AutoFishFeature:FastFishingLoop()
-    if fishingInProgress or biteDetectionActive then return end
+-- Main spam-based fishing loop
+function AutoFishFeature:SpamFishingLoop()
+    if fishingInProgress or spamActive then return end
     
     local currentTime = tick()
     local config = FISHING_CONFIGS[currentMode]
     
-    -- Minimal wait between cycles
+    -- Wait between cycles
     if currentTime - lastFishTime < config.waitBetween then
         return
     end
@@ -146,42 +154,41 @@ function AutoFishFeature:FastFishingLoop()
     lastFishTime = currentTime
     
     spawn(function()
-        local success = self:ExecuteFastFishingSequence()
+        local success = self:ExecuteSpamFishingSequence()
         fishingInProgress = false
         
         if success then
-            print("[AutoFish] FAST catch completed!")
+            print("[AutoFish] SPAM cycle completed!")
         end
     end)
 end
 
--- Execute FAST fishing sequence
-function AutoFishFeature:ExecuteFastFishingSequence()
+-- Execute spam-based fishing sequence
+function AutoFishFeature:ExecuteSpamFishingSequence()
     local config = FISHING_CONFIGS[currentMode]
     
-    -- Step 1: Equip rod (no wait)
+    -- Step 1: Equip rod
     if not self:EquipRod(config.rodSlot) then
         return false
     end
     
-    -- Step 2: Charge rod immediately
+    -- Step 2: Charge rod
     if not self:ChargeRod(config.chargeTime) then
         return false
     end
     
-    -- Step 3: Cast rod immediately  
+    -- Step 3: Cast rod
     if not self:CastRod() then
         return false
     end
     
-    -- Step 4: Start bite detection
-    castTime = tick()
-    self:StartBiteDetection(config.maxWaitForBite)
+    -- Step 4: Start completion spam
+    self:StartCompletionSpam(config.spamDelay, config.maxSpamTime)
     
     return true
 end
 
--- Equip fishing rod (fast)
+-- Equip rod
 function AutoFishFeature:EquipRod(slot)
     if not EquipTool then return false end
     
@@ -192,25 +199,24 @@ function AutoFishFeature:EquipRod(slot)
     return success
 end
 
--- Charge fishing rod (fast)
+-- Charge rod
 function AutoFishFeature:ChargeRod(chargeTime)
     if not ChargeFishingRod then return false end
     
-    local success, result = pcall(function()
-        local chargeValue = tick() + (chargeTime * 1000) -- Convert to milliseconds
+    local success = pcall(function()
+        local chargeValue = tick() + (chargeTime * 1000)
         return ChargeFishingRod:InvokeServer(chargeValue)
     end)
     
     return success
 end
 
--- Cast rod (fast)
+-- Cast rod
 function AutoFishFeature:CastRod()
     if not RequestFishing then return false end
     
     local success = pcall(function()
-        -- Fixed good cast position
-        local x = -1.2  -- Consistent position
+        local x = -1.2
         local z = 0.8
         return RequestFishing:InvokeServer(x, z)
     end)
@@ -218,136 +224,100 @@ function AutoFishFeature:CastRod()
     return success
 end
 
--- Start bite detection system
-function AutoFishFeature:StartBiteDetection(maxWaitTime)
-    if biteDetectionActive then return end
+-- Start spamming FishingCompleted
+function AutoFishFeature:StartCompletionSpam(delay, maxTime)
+    if spamActive then return end
     
-    biteDetectionActive = true
+    spamActive = true
+    completionCheckActive = true
+    local spamStartTime = tick()
+    
+    print("[AutoFish] Starting completion SPAM...")
+    
+    -- Update backpack count before spam
+    self:UpdateBackpackCount()
     
     spawn(function()
-        -- Method 1: Check for UI elements (tanda seru)
-        local detected = self:DetectFishBite(maxWaitTime)
-        
-        if detected and isRunning then
-            wait(0.1) -- Tiny delay for stability
-            self:CompleteInstantCatch()
+        while spamActive and isRunning and (tick() - spamStartTime) < maxTime do
+            -- Fire completion
+            local fired = self:FireCompletion()
+            
+            -- Check if fishing completed
+            if self:CheckFishingCompleted() then
+                print("[AutoFish] Fish caught via SPAM method!")
+                break
+            end
+            
+            wait(delay)
         end
         
-        biteDetectionActive = false
+        -- Stop spam
+        spamActive = false
+        completionCheckActive = false
+        
+        if (tick() - spamStartTime) >= maxTime then
+            print("[AutoFish] SPAM timeout after", maxTime, "seconds")
+        end
     end)
 end
 
--- Detect fish bite via multiple methods
-function AutoFishFeature:DetectFishBite(maxWaitTime)
-    local startTime = tick()
-    local player = LocalPlayer
-    
-    while tick() - startTime < maxWaitTime and isRunning and biteDetectionActive do
-        -- Method 1: Check character for fishing tool state
-        if player.Character then
-            local tool = player.Character:FindFirstChildOfClass("Tool")
-            if tool then
-                -- Check tool properties that might indicate bite
-                local handle = tool:FindFirstChild("Handle")
-                if handle then
-                    -- Some games modify tool properties on bite
-                    -- This is game-specific, might need adjustment
-                end
-            end
-        end
-        
-        -- Method 2: Check PlayerGui for bite indicators
-        local playerGui = player:FindFirstChild("PlayerGui")
-        if playerGui then
-            -- Look for fishing UI elements (tanda seru UI)
-            for _, gui in pairs(playerGui:GetChildren()) do
-                if gui:IsA("ScreenGui") then
-                    local found = self:CheckGuiForBiteIndicator(gui)
-                    if found then
-                        print("[AutoFish] Bite detected via GUI!")
-                        return true
-                    end
-                end
-            end
-        end
-        
-        -- Method 3: Time-based detection (fallback)
-        local elapsedTime = tick() - castTime
-        if elapsedTime >= 2 and elapsedTime <= maxWaitTime then
-            -- Fish typically bite within 2-8 seconds
-            print("[AutoFish] Bite assumed (time-based)")
-            return true
-        end
-        
-        wait(0.1) -- Check every 100ms
-    end
-    
-    return false
-end
-
--- Check GUI for bite indicators (enhanced)
-function AutoFishFeature:CheckGuiForBiteIndicator(gui)
-    local function searchForIndicator(obj, depth)
-        if not obj or depth > 5 then return false end -- Limit recursion depth
-        
-        -- Check visibility first
-        if obj:IsA("GuiObject") and not obj.Visible then
-            return false
-        end
-        
-        -- Check for exclamation mark in name/text
-        local name = obj.Name:lower()
-        if name:find("exclamation") or name:find("!") or 
-           name:find("bite") or name:find("fish") or
-           name:find("pull") or name:find("catch") then
-            if obj:IsA("GuiObject") and obj.Visible then
-                return true
-            end
-        end
-        
-        -- Check text content
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            local text = obj.Text
-            if text:find("!") or text:find("BITE") or 
-               text:find("PULL") or text:find("CATCH") then
-                return obj.Visible
-            end
-        end
-        
-        -- Check image content (exclamation mark images)
-        if obj:IsA("ImageLabel") then
-            local image = obj.Image
-            if image:find("exclamation") or image:find("alert") then
-                return obj.Visible
-            end
-        end
-        
-        -- Recursively check children
-        for _, child in pairs(obj:GetChildren()) do
-            if searchForIndicator(child, depth + 1) then
-                return true
-            end
-        end
-        
-        return false
-    end
-    
-    return searchForIndicator(gui, 0)
-end
-
--- Complete catch instantly
-function AutoFishFeature:CompleteInstantCatch()
+-- Fire FishingCompleted
+function AutoFishFeature:FireCompletion()
     if not FishingCompleted then return false end
     
     local success = pcall(function()
         FishingCompleted:FireServer()
     end)
     
-    if success then
-        print("[AutoFish] INSTANT catch completed!")
+    return success
+end
+
+-- Check if fishing completed successfully
+function AutoFishFeature:CheckFishingCompleted()
+    -- Method 1: Check backpack item count increase
+    local currentCount = self:GetBackpackItemCount()
+    if currentCount > lastBackpackCount then
+        lastBackpackCount = currentCount
+        return true
     end
     
-    return success
+    -- Method 2: Check character tool state
+    if LocalPlayer.Character then
+        local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if not tool then
+            -- Tool unequipped = fishing might be done
+            return false -- Don't rely on this alone
+        end
+    end
+    
+    -- Method 3: Check player stats (if game has fishing stats)
+    -- This is game-specific, might need adjustment
+    
+    return false
+end
+
+-- Update backpack count
+function AutoFishFeature:UpdateBackpackCount()
+    lastBackpackCount = self:GetBackpackItemCount()
+end
+
+-- Get current backpack item count
+function AutoFishFeature:GetBackpackItemCount()
+    local count = 0
+    
+    if LocalPlayer.Backpack then
+        count = count + #LocalPlayer.Backpack:GetChildren()
+    end
+    
+    if LocalPlayer.Character then
+        for _, child in pairs(LocalPlayer.Character:GetChildren()) do
+            if child:IsA("Tool") then
+                count = count + 1
+            end
+        end
+    end
+    
+    return count
 end
 
 -- Get status
@@ -356,8 +326,9 @@ function AutoFishFeature:GetStatus()
         running = isRunning,
         mode = currentMode,
         inProgress = fishingInProgress,
-        detecting = biteDetectionActive,
+        spamming = spamActive,
         lastCatch = lastFishTime,
+        backpackCount = lastBackpackCount,
         remotesReady = remotesInitialized
     }
 end
@@ -366,7 +337,7 @@ end
 function AutoFishFeature:SetMode(mode)
     if FISHING_CONFIGS[mode] then
         currentMode = mode
-        print("[AutoFish] FAST mode changed to:", mode)
+        print("[AutoFish] SPAM mode changed to:", mode)
         return true
     end
     return false
@@ -374,7 +345,7 @@ end
 
 -- Cleanup
 function AutoFishFeature:Cleanup()
-    print("[AutoFish] Cleaning up...")
+    print("[AutoFish] Cleaning up SPAM method...")
     self:Stop()
     controls = {}
     remotesInitialized = false
