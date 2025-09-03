@@ -1,14 +1,7 @@
 -- ===========================
 -- AUTO SELL FISH FEATURE
 -- File: autosellfish.lua
---
--- This module automates selling fish in Fish It. It exposes a minimal API
--- tailored for integration with the WindUI GUI. The script watches the
--- player's backpack, and when the number of fish (represented as Tools)
--- meets or exceeds a user‑defined limit, it triggers a remote call to sell
--- all fish. It also allows adjusting the rarity threshold via a remote
--- call. To avoid flooding the server with redundant threshold changes, a
--- simple debouncing mechanism is used.
+-- ===========================
 
 local AutoSellFish = {}
 AutoSellFish.__index = AutoSellFish
