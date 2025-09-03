@@ -56,7 +56,7 @@ local FISHING_CONFIGS = {
         waitBetween = 0.5,
         rodSlot = 1,
         spamDelay = 0.1,      -- Spam every 100ms
-        maxSpamTime = 10      -- Stop spam after 10s
+        maxSpamTime = 5      -- Stop spam after 10s
     },
     ["OK"] = {
         chargeTime = 0.9,
