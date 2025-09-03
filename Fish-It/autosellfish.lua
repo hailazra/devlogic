@@ -1,4 +1,6 @@
---- ====== Auto Sell Fish ====== -----
+-- ===========================
+-- AUTO SELL FISH FEATURE
+-- File: autosellfish.lua
 
 local AutoSellFish = {}
 AutoSellFish.__index = AutoSellFish
@@ -14,7 +16,7 @@ local NetPath = nil
 local UpdateAutoSellThresholdRF, SellAllItemsRF
 
 -- Rarity threshold enumeration. These numeric codes must match the
--- server‑side expectations for UpdateAutoSellThreshold.
+-- serverside expectations for UpdateAutoSellThreshold.
 local THRESHOLD_ENUM = {
     Legendary = 5,
     Mythic    = 6,
