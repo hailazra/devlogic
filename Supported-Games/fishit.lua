@@ -48,7 +48,7 @@ function FeatureManager:LoadFeature(featureName, controls)
         return nil 
     end
 
-     local success, feature = pcall(function()
+      local success, feature = pcall(function()
         return loadstring(game:HttpGet(url))()
     end)
 
