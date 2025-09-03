@@ -35,7 +35,7 @@ local FeatureManager = {}
 FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
-    AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
+    AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua",
     AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua"
 }
 
@@ -51,7 +51,7 @@ function FeatureManager:LoadFeature(featureName, controls)
         return nil 
     end
 
-      local success, feature = pcall(function()
+    local success, feature = pcall(function()
         return loadstring(game:HttpGet(url))()
     end)
 
@@ -68,7 +68,7 @@ function FeatureManager:LoadFeature(featureName, controls)
             return feature
         end
     end
-    
+
     WindUI:Notify({
         Title = "Load Failed",
         Content = "Could not load " .. featureName,
@@ -128,7 +128,7 @@ local CHANGELOG = table.concat({
 local DISCORD = table.concat({
     "https://discord.gg/3AzvRJFT3M",
 }, "\n")
-    
+
 local function ShowChangelog()
     Window:Dialog({
         Title   = "Changelog",
@@ -154,6 +154,7 @@ end
 
 -- name, icon, callback, order
 Window:CreateTopbarButton("changelog", "newspaper", ShowChangelog, 995)
+
 
 --========== TABS ==========
 local TabHome     = Window:Tab({ Title = "Home",     Icon = "house" })
@@ -248,3 +249,24 @@ local autofish_tgl = TabMain:Toggle({
         end
     end
 })
+
+
+--========== LIFECYCLE (tanpa cleanup integrasi) ==========
+if type(Window.OnClose) == "function" then
+    Window:OnClose(function()
+        print("[GUI] Window closed")
+        -- Tidak ada cleanup integrasi fitur di sini
+    end)
+end
+
+if type(Window.OnDestroy) == "function" then
+    Window:OnDestroy(function()
+        print("[GUI] Window destroying - cleaning up")
+        for _, feature in pairs(FeatureManager.LoadedFeatures) do
+            if feature.Cleanup then
+                pcall(feature.Cleanup, feature)
+            end
+        end
+        FeatureManager.LoadedFeatures = {}
+    end)
+end
