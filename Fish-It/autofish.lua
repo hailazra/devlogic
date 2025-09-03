@@ -189,12 +189,19 @@ function AutoFishFeature:ExecuteSpamFishingSequence()
 end
 
 -- Equip rod
-function AutoFishFeature:EquipRod(1)
+function AutoFishFeature:EquipRod(slot)
     if not EquipTool then return false end
     
-    local success = pcall(function()
-        EquipTool:FireServer(1)
+    local success, result = pcall(function()
+        EquipTool:FireServer(slot)
+        return true
     end)
+    
+    if success then
+        print("[AutoFish] Rod equipped")
+    else
+        warn("[AutoFish] Failed to equip rod:", result)
+    end
     
     return success
 end
