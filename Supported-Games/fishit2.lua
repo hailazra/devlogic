@@ -36,7 +36,8 @@ FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
     AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua",
-    AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua"
+    AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua", 
+    AutoTeleportIsland = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua" 
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -482,12 +483,16 @@ local teleisland_sec = TabTeleport:Section({
     TextSize = 17, -- Default Size
 })
 
+-- Variable untuk menyimpan current island selection
+local currentTeleportIsland = "Fisherman Island"
+
 local teleisland_dd = TabTeleport:Dropdown({
     Title = "Select Island",
     Values = { "Fisherman Island", "Kohana", "Kohana Volcano", "Coral Reefs", "Esoteric Depths", "Tropical Grove", "Crater Island", "Lost Isle" },
     Value = "Fisherman Island",
     Callback = function(option) 
-        print("Category selected: " .. option) 
+        currentTeleportIsland = option
+        print("[GUI] Island selected: " .. option) 
     end
 })
 
@@ -495,8 +500,36 @@ local teleisland_btn = TabTeleport:Button({
     Title = "Teleport To Island",
     Desc = "",
     Locked = false,
-     Callback = function()
-        print("clicked")
+    Callback = function()
+        print("[GUI] Teleport button clicked for island:", currentTeleportIsland)
+        
+        -- Ambil instance feature yang sudah dimuat atau muat baru
+        local tpFeature = FeatureManager:GetFeature("AutoTeleportIsland")
+        
+        -- Jika belum ada, muat fitur dengan kontrol yang diperlukan
+        if not tpFeature then
+            tpFeature = FeatureManager:LoadFeature("AutoTeleportIsland", {
+                dropdown = teleisland_dd,
+                button   = teleisland_btn,
+            })
+        end
+        
+        -- Gunakan modul untuk set nama pulau dan teleport
+        if tpFeature then
+            if tpFeature.SetIsland then 
+                tpFeature:SetIsland(currentTeleportIsland) 
+            end
+            if tpFeature.Teleport then 
+                tpFeature:Teleport() 
+            end
+        else
+            WindUI:Notify({
+                Title = "Failed",
+                Content = "Could not load AutoTeleportIsland",
+                Icon = "x",
+                Duration = 3
+            })
+        end
     end
 })
 
