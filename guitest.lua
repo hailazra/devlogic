@@ -6,13 +6,13 @@ local WindUI = loadstring(game:HttpGet(
 
 -- Custom Theme: DarkPurple
 WindUI.Themes["DarkRedDL"] = {
-    Accent      = "#5A0F0F", -- lebih gelap, nuansa oxblood/wine
-    Dialog      = "#0F0F12",
+     Accent      = "#5A0F0F",  -- oxblood/ruby gelap
+    Dialog      = "#5A0F0F",
     Outline     = "#5A0F0F",
-    Text        = "#EAEAF0",
-    Placeholder = "#6B7280",
+    Text        = "#F4F4F5",
+    Placeholder = "#5A0F0F",
     Background  = "#09090B",
-    Button      = "#16161A",
+    Button      = "#1A1A1E",
     Icon        = "#5A0F0F",
 
 }
