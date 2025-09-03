@@ -359,6 +359,31 @@ local sellfish_tgl = TabBackpack:Toggle({
   end
 })
 
+--- Gift Fish
+local autogift_sec = TabBackpack:Section({ 
+    Title = "Auto Gift",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local autogiftplayer_dd = TabBackpack:Dropdown({
+    Title = "Select Player",
+    Values = { "Category A", "Category B", "Category C" },
+    Value = "Category A",
+    Callback = function(option) 
+        print("Category selected: " .. option) 
+    end
+})
+
+local autogift_tgl = TabBackpack:Toggle({
+    Title = "Auto Gift Fish",
+    Desc  = "Auto Gift held Fish/Item",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
+
 
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
