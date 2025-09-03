@@ -298,14 +298,12 @@ local sellfish_sec = TabBackpack:Section({
     TextSize = 17, -- Default Size
 })
 
-local sellfish_ddm = TabBackpack:Dropdown({
-    Title = "Select Fish",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = { "Category A" },
-    Multi = true,
-    AllowNone = true,
+local sellfish_dd = TabBackpack:Dropdown({
+    Title = "Select Rarity",
+    Values = { "Secret", "Mythic", "Legendary" },
+    Value = "Legendary",
     Callback = function(option) 
-        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+        print("Category selected: " .. option) 
     end
 })
 
