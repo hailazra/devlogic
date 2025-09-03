@@ -475,6 +475,55 @@ local shopweather_tgl = TabShop:Toggle({
     end
 })
 
+--- === Teleport === ---
+local teleisland_sec = TabTeleport:Section({ 
+    Title = "Islands",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local teleisland_dd = TabTeleport:Dropdown({
+    Title = "Select Island",
+    Values = { "Fisherman Island", "Kohana", "Kohana Volcano", "Coral Reefs", "Esoteric Depths", "Tropical Grove", "Crater Island", "Lost Isle" },
+    Value = "Fisherman Island",
+    Callback = function(option) 
+        print("Category selected: " .. option) 
+    end
+})
+
+local teleisland_btn = TabTeleport:Button({
+    Title = "Teleport To Island",
+    Desc = "",
+    Locked = false,
+     Callback = function()
+        print("clicked")
+    end
+})
+
+local teleplayer_sec = TabTeleport:Section({ 
+    Title = "Players",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local teleplayer_dd = TabTeleport:Dropdown({
+    Title = "Select Player",
+    Values = { "Category A", "Category B", "Category C" },
+    Value = "Category A",
+    Callback = function(option) 
+        print("Category selected: " .. option) 
+    end
+})
+
+local teleplayer_btn = TabTeleport:Button({
+    Title = "Teleport To Player",
+    Desc = "",
+    Locked = false,
+    Callback = function()
+        print("clicked")
+    end
+})
+
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
     Window:OnClose(function()
