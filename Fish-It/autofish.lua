@@ -180,7 +180,7 @@ function AutoFishFeature:ExecuteSpamFishingSequence()
     end
     
     -- Step 3: Cast rod
-    if not self:CastRod(2) then
+    if not self:CastRod() then
         return false
     end
     
@@ -218,8 +218,8 @@ function AutoFishFeature:CastRod()
     if not RequestFishing then return false end
     
     local success = pcall(function()
-        local x = -1.2
-        local z = 0.8
+        local x = -0.57
+        local z = 0.99
         return RequestFishing:InvokeServer(x, z)
     end)
     
