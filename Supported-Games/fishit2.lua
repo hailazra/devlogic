@@ -250,6 +250,48 @@ local autofish_tgl = TabMain:Toggle({
     end
 })
 
+--- Event Teleport
+local eventtele_sec = TabMain:Section({ 
+    Title = "Event Teleport",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local eventtele_tgl = TabMain:Toggle({
+    Title = "Auto Event Teleport",
+    Desc  = "Auto Teleport to Event when available",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
+
+--- === Backpack === ---
+--- Favorite Fish
+local favfish_sec = TabBackpack:Section({ 
+    Title = "Favorite Fish",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local favfish_ddm = TabBackpack:Dropdown({
+    Title = "Select Fish",
+    Values = { "Category A", "Category B", "Category C" },
+    Value = { "Category A" },
+    Multi = true,
+    AllowNone = true,
+    Callback = function(option) 
+        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    end
+})
+
+local favfish_tgl = TabBackpack:Toggle({
+    Title = "Auto Favorite Fish",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
 
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
