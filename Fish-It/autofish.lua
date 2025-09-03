@@ -55,7 +55,7 @@ local FISHING_CONFIGS = {
         chargeTime = 1.0,
         waitBetween = 0.5,
         rodSlot = 1,
-        spamDelay = 0.1,      -- Spam every 100ms
+        spamDelay = 0.05,      -- Spam every 100ms
         maxSpamTime = 3      -- Stop spam after 10s
     },
     ["OK"] = {
@@ -189,11 +189,11 @@ function AutoFishFeature:ExecuteSpamFishingSequence()
 end
 
 -- Equip rod
-function AutoFishFeature:EquipRod(slot)
+function AutoFishFeature:EquipRod(1)
     if not EquipTool then return false end
     
     local success = pcall(function()
-        EquipTool:FireServer(slot)
+        EquipTool:FireServer(1)
     end)
     
     return success
