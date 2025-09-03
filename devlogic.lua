@@ -1,8 +1,8 @@
 local Games = loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/supportedgames.lua"))()
 
-local URLGame = Games[game.PlaceId]
+local URL = Games[game.PlaceId]
 
-if URLGame then
-  loadstring(game:HttpGet(URLGame))()
+if URL then
+  loadstring(game:HttpGet(URL))()
 
 end
