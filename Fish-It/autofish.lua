@@ -53,7 +53,7 @@ local lastBackpackCount = 0
 local FISHING_CONFIGS = {
     ["Perfect"] = {
         chargeTime = 1.0,
-        waitBetween = 0.5,
+        waitBetween = 0.1,
         rodSlot = 1,
         spamDelay = 0.05,      -- Spam every 100ms
         maxSpamTime = 3      -- Stop spam after 10s
@@ -180,7 +180,7 @@ function AutoFishFeature:ExecuteSpamFishingSequence()
     end
     
     -- Step 3: Cast rod
-    if not self:CastRod(config.chargeTime) then
+    if not self:CastRod(2) then
         return false
     end
     
