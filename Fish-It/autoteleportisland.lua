@@ -2,6 +2,7 @@
 -- AUTO TELEPORT ISLAND FEATURE
 -- File: autoteleport.lua
 -- ===========================
+
 local AutoTeleport = {}
 AutoTeleport.__index = AutoTeleport
 
