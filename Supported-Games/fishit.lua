@@ -32,8 +32,8 @@ local FeatureManager = {}
 FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
-    --AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
-    --AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua"
+    AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
+    AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -95,7 +95,7 @@ local Window = WindUI:CreateWindow({
 WindUI:SetFont("rbxasset://12187366657")
 
 Window:EditOpenButton({
-    Title = "hj",
+    Title = "",
     Icon = "rbxassetid://73063950477508",
     CornerRadius = UDim.new(0,1),
     StrokeThickness = 1,
