@@ -1,8 +1,4 @@
--- ===========================
--- AUTO SELL FISH FEATURE
--- File: autosellfish.lua
--- ===========================
-
+--- ====== Auto Sell Fish ====== -----
 
 local AutoSellFish = {}
 AutoSellFish.__index = AutoSellFish
