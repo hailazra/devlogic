@@ -3,6 +3,6 @@ local Games = loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazr
 local URL = Games[game.PlaceId]
 
 if URL then
-  loadstring(game:HttpGet(URL))()
+  loadstring(game:HttpGet("URL"))()
 
 end
