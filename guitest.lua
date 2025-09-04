@@ -61,14 +61,23 @@ iconButton.MouseButton1Click:Connect(toggleWindow)
 -- Sembunyikan ikon di awal karena window sudah terbuka
 iconButton.Visible = false
 
--- SOLUSI ALTERNATIF 2: Override Toggle function (jika tersedia)
-if Window.Toggle then
-    local originalToggle = Window.Toggle
-    Window.Toggle = function(self)
-        local result = originalToggle(self)
-        -- Toggle ikon visibility
-        iconButton.Visible = not iconButton.Visible
-        isWindowOpen = not isWindowOpen
+-- SOLUSI ALTERNATIF 3: Coba hook ke method Close dan Open
+if Window.Close then
+    local originalClose = Window.Close
+    Window.Close = function(self)
+        local result = originalClose(self)
+        iconButton.Visible = true
+        isWindowOpen = false
+        return result
+    end
+end
+
+if Window.Open then
+    local originalOpen = Window.Open
+    Window.Open = function(self)
+        local result = originalOpen(self)
+        iconButton.Visible = false
+        isWindowOpen = true
         return result
     end
 end
