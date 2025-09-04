@@ -36,82 +36,26 @@ iconButton.BackgroundTransparency = 1
 iconButton.Image        = "rbxassetid://73063950477508"
 iconButton.Parent       = iconGui
 
--- Buat ikon draggable
-local UserInputService = game:GetService("UserInputService")
-local isDragging = false
-local dragStart = nil
-local startPos = nil
-local hasMoved = false
-
-
--- Klik ikon untuk membuka window (dengan delay untuk membedakan drag dan click)
-local clickStartTime = 0
-iconButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        clickStartTime = tick()
-    end
-end)
-
-iconButton.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        -- Jika waktu click kurang dari 0.2 detik dan tidak sedang drag, anggap sebagai click
-        local clickDuration = tick() - clickStartTime
-        if clickDuration < 0.2 and not dragging then
-            toggleWindow()
-        end
-    end
-end)
-
-iconButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isDragging = true
-        hasMoved = false
-        dragStart = input.Position
-        startPos = iconButton.Position
-    end
-end)
-
-        
-        
-
 -- Variable untuk track status window
 local isWindowOpen = true -- Window mulai dalam keadaan terbuka
 
 -- Fungsi untuk toggle window dan ikon
 local function toggleWindow()
-    print("Toggle window called!") -- Debug
     if isWindowOpen then
         -- Tutup window, tampilkan ikon
         Window:Close()
         iconButton.Visible = true
         isWindowOpen = false
-        print("Window closed")
     else
         -- Buka window, sembunyikan ikon
         Window:Open()
         iconButton.Visible = false
         isWindowOpen = true
-        print("Window opened")
     end
 end
 
--- Klik ikon untuk membuka window (dengan delay untuk membedakan drag dan click)
-local clickStartTime = 0
-iconButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        clickStartTime = tick()
-    end
-end)
-
-iconButton.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        -- Jika waktu click kurang dari 0.2 detik dan tidak sedang drag, anggap sebagai click
-        local clickDuration = tick() - clickStartTime
-        if clickDuration < 0.2 and not dragging then
-            toggleWindow()
-        end
-    end
-end)
+-- Klik ikon untuk membuka window
+iconButton.MouseButton1Click:Connect(toggleWindow)
 
 -- Sembunyikan ikon di awal karena window sudah terbuka
 iconButton.Visible = false
