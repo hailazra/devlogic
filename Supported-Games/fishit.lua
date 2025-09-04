@@ -319,7 +319,7 @@ local sellfish_in = TabBackpack:Input({
     Title = "Sell Delay",
     Placeholder = "e.g 60 (second)",
     Desc = "Input delay in seconds.",
-    Value = "",
+    Value = "60",
     Numeric = true,
     Callback    = function(value)
     local n = tonumber(value) or 0
@@ -643,5 +643,6 @@ if type(Window.OnDestroy) == "function" then
         FeatureManager.LoadedFeatures = {}
     end)
 end
+
 
 
