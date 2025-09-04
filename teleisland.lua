@@ -16,7 +16,7 @@ local Window = WindUI:CreateWindow({
     Author        = "logicdev",
     Folder        = ".devlogichub",
     Theme = "Dark",
-    Size  = UDim2.fromOffset(540, 400),
+    Size  = UDim2.fromOffset(250, 250),
     Resizable = true,
 })
 
@@ -172,4 +172,5 @@ Tab:Button({
         end
     end
 })
+
 
