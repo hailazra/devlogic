@@ -318,7 +318,7 @@ local sellfish_dd = TabBackpack:Dropdown({
 local sellfish_in = TabBackpack:Input({
     Title = "Sell Delay",
     Placeholder = "e.g 60 (second)",
-    Desc = "Input delay in seconds."
+    Desc = "Input delay in seconds.",
     Value = "",
     Numeric = true,
     Callback    = function(value)
@@ -643,4 +643,5 @@ if type(Window.OnDestroy) == "function" then
         FeatureManager.LoadedFeatures = {}
     end)
 end
+
 
