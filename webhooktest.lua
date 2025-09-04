@@ -130,7 +130,23 @@ end
 
 local EVENT_DECODERS = {
   ["RE/FishCaught"] = decode_RE_FishCaught,
-  -- kamu bisa tambah decoder spesifik event lain di sini
+ 
+-- TEMP debug kirim keys ke console
+if CFG.DEBUG then
+  local function keys(t)
+    local out={} for k,_ in pairs(t) do table.insert(out, tostring(k)) end
+    table.sort(out); return table.concat(out, ", ")
+  end
+  for i=1, (packed.n or #packed) do
+    local a = packed[i]
+    if type(a)=="table" then
+      warn("[FCD-2.2] args["..i.."] keys:", keys(a))
+      for _,k in ipairs({"Fish","Data","Item","Reward","Catch","Result"}) do
+        if type(a[k])=="table" then warn("[FCD-2.2] args["..i.."]."..k.." keys:", keys(a[k])) end
+      end
+    end
+  end
+end
 }
 
 -- ====== PIPELINE ======
