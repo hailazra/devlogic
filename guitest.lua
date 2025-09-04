@@ -3,6 +3,10 @@ local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
 
+local Players   = game:GetService("Players")
+local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+local iconGui   = Instance.new("ScreenGui")
+
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
     Title         = ".devlogic",
@@ -22,9 +26,7 @@ WindUI:SetFont("rbxasset://12187366657")
 Window:EditOpenButton({ Enabled = false })
 
 -- Buat ikon kustom yang menggantikan tombol bawaan
-local Players   = game:GetService("Players")
-local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-local iconGui   = Instance.new("ScreenGui")
+
 iconGui.Name    = "DevLogicIconGui"
 iconGui.Parent  = PlayerGui
 
@@ -41,17 +43,6 @@ iconButton.MouseButton1Click:Connect(function()
     Window:Toggle()
 end)
 
--- Sembunyikan ikon saat GUI dibuka, tampilkan lagi saat ditutup
-if type(Window.OnOpen) == "function" then
-    Window:OnOpen(function()
-        iconButton.Visible = false
-    end)
-end
-if type(Window.OnClose) == "function" then
-    Window:OnClose(function()
-        iconButton.Visible = true
-    end)
-end
 
 -- … sisanya tetap sama (Tag, Changelog, Tabs, dsb.)
 
@@ -184,10 +175,17 @@ local plantseed_tgl = plantseed_sec:Toggle({
 })
 
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
+
+-- Sembunyikan ikon saat GUI dibuka, tampilkan lagi saat ditutup
+if type(Window.OnOpen) == "function" then
+    Window:OnOpen(function()
+        iconButton.Visible = false
+    end)
+end
+
 if type(Window.OnClose) == "function" then
     Window:OnClose(function()
-        print("[GUI] Window closed")
-        -- Tidak ada cleanup integrasi fitur di sini
+        iconButton.Visible = true
     end)
 end
 
@@ -203,4 +201,5 @@ if type(Window.OnDestroy) == "function" then
     end)
 
 end
+
 
