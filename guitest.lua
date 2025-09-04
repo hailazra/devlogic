@@ -3,21 +3,6 @@ local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
 
-
--- Custom Theme: DarkPurple
-WindUI.Themes["DarkRedDL"] = {
-     Accent      = "#5A0F0F",  -- oxblood/ruby gelap
-    Dialog      = "#5A0F0F",
-    Outline     = "#5A0F0F",
-    Text        = "#F4F4F5",
-    Placeholder = "#5A0F0F",
-    Background  = "#09090B",
-    Button      = "#09090B",
-    Icon        = "#5A0F0F",
-
-}
-
-Theme = "DarkRedDL"
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
     Title         = ".devlogic",
@@ -25,10 +10,9 @@ local Window = WindUI:CreateWindow({
     Author        = "Grow A Garden",
     Folder        = ".devlogichub",
     Size          = UDim2.fromOffset(250, 250),
-    Theme         = "DarkRedDL",
+    Theme         = "Dark",
     Resizable     = false,
     SideBarWidth  = 120,
-    Background    = "rbxassetid://90720325629824",
     HideSearchBar = true,
 })
 
@@ -194,4 +178,5 @@ if type(Window.OnDestroy) == "function" then
         end
         FeatureManager.LoadedFeatures = {}
     end)
+
 end
