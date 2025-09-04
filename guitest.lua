@@ -18,58 +18,12 @@ local Window = WindUI:CreateWindow({
 
 WindUI:SetFont("rbxasset://12187366657")
 
--- Buat ikon kustom
-local Players   = game:GetService("Players")
-local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-
--- Tunggu WindUI selesai load
-wait(1)
-
--- Cari dan ganti tombol bawaan WindUI
-local function replaceDefaultButton()
-    local windUIGui = PlayerGui:FindFirstChild("WindUI")
-    if windUIGui then
-        -- Cari tombol minimize/open bawaan
-        local defaultButton = windUIGui:FindFirstChild("OpenButton") or 
-                             windUIGui:FindFirstDescendant("OpenButton")
-        
-        if defaultButton then
-            -- Ganti image tombol bawaan
-            if defaultButton:IsA("ImageButton") or defaultButton:IsA("ImageLabel") then
-                defaultButton.Image = "rbxassetid://73063950477508"
-                defaultButton.Size = UDim2.fromOffset(40, 40)
-            end
-            
-            -- Atau buat tombol baru mengganti yang lama
-            local newButton = defaultButton:Clone()
-            newButton.Image = "rbxassetid://73063950477508"
-            newButton.Size = UDim2.fromOffset(40, 40)
-            newButton.Position = UDim2.new(0, 10, 0.5, -20)
-            newButton.Parent = defaultButton.Parent
-            
-            -- Hapus tombol lama
-            defaultButton:Destroy()
-            
-            print("Berhasil mengganti tombol WindUI!")
-            return true
-        end
-    end
-    return false
-end
-
--- Coba ganti tombol beberapa kali sampai berhasil
-spawn(function()
-    for i = 1, 10 do
-        if replaceDefaultButton() then
-            break
-        end
-        wait(0.5)
-    end
-end)
-
--- Atau langsung disable dan buat sendiri seperti script asli kamu
+-- Nonaktifkan tombol open bawaan
 Window:EditOpenButton({ Enabled = false })
 
+-- Buat ikon kustom yang menggantikan tombol bawaan
+local Players   = game:GetService("Players")
+local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local iconGui   = Instance.new("ScreenGui")
 iconGui.Name    = "DevLogicIconGui"
 iconGui.Parent  = PlayerGui
@@ -81,22 +35,140 @@ iconButton.Position     = UDim2.new(0, 10, 0.5, -20)
 iconButton.BackgroundTransparency = 1
 iconButton.Image        = "rbxassetid://73063950477508"
 iconButton.Parent       = iconGui
-iconButton.Visible      = false -- Mulai hidden
 
--- Fungsi toggle sederhana
-iconButton.MouseButton1Click:Connect(function()
-    -- Langsung panggil toggle WindUI
-    pcall(function()
-        Window:Toggle()
-    end)
-    
-    -- Force show/hide ikon berdasarkan window state
-    wait(0.1)
-    local windUIGui = PlayerGui:FindFirstChild("WindUI")
-    if windUIGui then
-        local mainFrame = windUIGui:FindFirstChild("Frame") or windUIGui:FindFirstChild("Main")
-        if mainFrame then
-            iconButton.Visible = not mainFrame.Visible
+-- Buat ikon draggable
+local UserInputService = game:GetService("UserInputService")
+local isDragging = false
+local dragStart = nil
+local startPos = nil
+local hasMoved = false
+
+
+-- Klik ikon untuk membuka window (dengan delay untuk membedakan drag dan click)
+local clickStartTime = 0
+iconButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        clickStartTime = tick()
+    end
+end)
+
+iconButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        -- Jika waktu click kurang dari 0.2 detik dan tidak sedang drag, anggap sebagai click
+        local clickDuration = tick() - clickStartTime
+        if clickDuration < 0.2 and not dragging then
+            toggleWindow()
         end
     end
 end)
+
+iconButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        isDragging = true
+        hasMoved = false
+        dragStart = input.Position
+        startPos = iconButton.Position
+    end
+end)
+
+        
+        
+
+-- Variable untuk track status window
+local isWindowOpen = true -- Window mulai dalam keadaan terbuka
+
+-- Fungsi untuk toggle window dan ikon
+local function toggleWindow()
+    print("Toggle window called!") -- Debug
+    if isWindowOpen then
+        -- Tutup window, tampilkan ikon
+        Window:Close()
+        iconButton.Visible = true
+        isWindowOpen = false
+        print("Window closed")
+    else
+        -- Buka window, sembunyikan ikon
+        Window:Open()
+        iconButton.Visible = false
+        isWindowOpen = true
+        print("Window opened")
+    end
+end
+
+-- Klik ikon untuk membuka window (dengan delay untuk membedakan drag dan click)
+local clickStartTime = 0
+iconButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        clickStartTime = tick()
+    end
+end)
+
+iconButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        -- Jika waktu click kurang dari 0.2 detik dan tidak sedang drag, anggap sebagai click
+        local clickDuration = tick() - clickStartTime
+        if clickDuration < 0.2 and not dragging then
+            toggleWindow()
+        end
+    end
+end)
+
+-- Sembunyikan ikon di awal karena window sudah terbuka
+iconButton.Visible = false
+
+-- SOLUSI ALTERNATIF 1: Gunakan RunService untuk monitor visibility
+local RunService = game:GetService("RunService")
+local lastVisible = nil
+
+RunService.Heartbeat:Connect(function()
+    -- Cari WindUI main frame untuk cek visibility
+    local windUIFrame = PlayerGui:FindFirstChild("WindUI")
+    if windUIFrame then
+        local mainFrame = windUIFrame:FindFirstChild("Frame") or windUIFrame:FindFirstChild("Main")
+        if mainFrame and mainFrame.Visible ~= lastVisible then
+            lastVisible = mainFrame.Visible
+            if mainFrame.Visible then
+                -- Window terbuka, sembunyikan ikon
+                iconButton.Visible = false
+                isWindowOpen = true
+            else
+                -- Window tertutup, tampilkan ikon
+                iconButton.Visible = true
+                isWindowOpen = false
+            end
+        end
+    end
+end)
+
+-- SOLUSI ALTERNATIF 2: Override Toggle function (jika tersedia)
+if Window.Toggle then
+    local originalToggle = Window.Toggle
+    Window.Toggle = function(self)
+        local result = originalToggle(self)
+        -- Toggle ikon visibility
+        iconButton.Visible = not iconButton.Visible
+        isWindowOpen = not isWindowOpen
+        return result
+    end
+end
+
+-- SOLUSI ALTERNATIF 3: Coba hook ke method Close dan Open
+if Window.Close then
+    local originalClose = Window.Close
+    Window.Close = function(self)
+        local result = originalClose(self)
+        iconButton.Visible = true
+        isWindowOpen = false
+        return result
+    end
+end
+
+if Window.Open then
+    local originalOpen = Window.Open
+    Window.Open = function(self)
+        local result = originalOpen(self)
+        iconButton.Visible = false
+        isWindowOpen = true
+        return result
+    end
+end
