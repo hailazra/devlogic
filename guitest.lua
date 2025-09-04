@@ -34,6 +34,7 @@ iconButton.Size         = UDim2.fromOffset(40, 40)
 iconButton.Position     = UDim2.new(0, 10, 0.5, -20)
 iconButton.BackgroundTransparency = 1
 iconButton.Image        = "rbxassetid://73063950477508"
+iconButton.Draggable    = true
 iconButton.Parent       = iconGui
 
 -- Variable untuk track status window
