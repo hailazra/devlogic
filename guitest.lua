@@ -45,7 +45,67 @@ iconButton.Visible = false
 -- Klik ikon untuk membuka jendela
 iconButton.MouseButton1Click:Connect(function()
     -- buka jendela WindUI
-    Window:Toggle()
+    -- === helper untuk buka window WindUI secara robust ===
+local function openWindUI(Window, iconButton)
+    -- 1) Coba method tanpa argumen
+    for _, fn in ipairs({"Open", "Show"}) do
+        if type(Window[fn]) == "function" then
+            local ok, err = pcall(function() Window[fn](Window) end)
+            if ok then
+                iconButton.Visible = false
+                return true
+            else
+                warn("[devlogic] "..fn.." error: "..tostring(err))
+            end
+        end
+    end
+
+    -- 2) Coba setter boolean (butuh argumen true)
+    for _, fn in ipairs({"SetOpen", "SetOpened", "SetVisible"}) do
+        if type(Window[fn]) == "function" then
+            local ok, err = pcall(function() Window[fn](Window, true) end)
+            if ok then
+                iconButton.Visible = false
+                return true
+            else
+                warn("[devlogic] "..fn.." error: "..tostring(err))
+            end
+        end
+    end
+
+    -- 3) Fallback: pakai Toggle Key + VirtualInputManager
+    if type(Window.SetToggleKey) == "function" then
+        -- pilih key yang jarang dipakai, bebas ganti
+        local key = Enum.KeyCode.RightShift
+        pcall(function() Window:SetToggleKey(key) end)  -- tersedia di contoh resmi
+        local vim = game:GetService("VirtualInputManager")
+        if vim then
+            -- tap key down + up
+            pcall(function()
+                vim:SendKeyEvent(true,  key, false, game)
+                task.wait()
+                vim:SendKeyEvent(false, key, false, game)
+            end)
+            iconButton.Visible = false
+            return true
+        end
+    end
+
+    warn("[devlogic] Tidak menemukan API untuk membuka window (Open/Show/SetOpen/SetVisible).")
+    return false
+end
+
+-- === ganti handler klik ikon kamu jadi ini ===
+iconButton.MouseButton1Click:Connect(function()
+    openWindUI(Window, iconButton)
+end)
+
+-- Pastikan ikon muncul lagi saat jendela ditutup:
+if type(Window.OnClose) == "function" then
+    Window:OnClose(function()
+        iconButton.Visible = true
+    end)
+        end
     -- sembunyikan ikon
     iconButton.Visible = false
 end)
@@ -201,6 +261,7 @@ if type(Window.OnDestroy) == "function" then
     end)
 
 end
+
 
 
 
