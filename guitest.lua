@@ -61,26 +61,14 @@ iconButton.MouseButton1Click:Connect(toggleWindow)
 -- Sembunyikan ikon di awal karena window sudah terbuka
 iconButton.Visible = false
 
--- SOLUSI ALTERNATIF 1: Gunakan RunService untuk monitor visibility
-local RunService = game:GetService("RunService")
-local lastVisible = nil
-
-RunService.Heartbeat:Connect(function()
-    -- Cari WindUI main frame untuk cek visibility
-    local windUIFrame = PlayerGui:FindFirstChild("WindUI")
-    if windUIFrame then
-        local mainFrame = windUIFrame:FindFirstChild("Frame") or windUIFrame:FindFirstChild("Main")
-        if mainFrame and mainFrame.Visible ~= lastVisible then
-            lastVisible = mainFrame.Visible
-            if mainFrame.Visible then
-                -- Window terbuka, sembunyikan ikon
-                iconButton.Visible = false
-                isWindowOpen = true
-            else
-                -- Window tertutup, tampilkan ikon
-                iconButton.Visible = true
-                isWindowOpen = false
-            end
-        end
+-- SOLUSI ALTERNATIF 2: Override Toggle function (jika tersedia)
+if Window.Toggle then
+    local originalToggle = Window.Toggle
+    Window.Toggle = function(self)
+        local result = originalToggle(self)
+        -- Toggle ikon visibility
+        iconButton.Visible = not iconButton.Visible
+        isWindowOpen = not isWindowOpen
+        return result
     end
-end)
+end
