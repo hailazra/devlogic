@@ -3,9 +3,7 @@ local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
 
-local Players   = game:GetService("Players")
-local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-local iconGui   = Instance.new("ScreenGui")
+
 
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
@@ -25,25 +23,39 @@ WindUI:SetFont("rbxasset://12187366657")
 -- Nonaktifkan tombol open bawaan
 Window:EditOpenButton({ Enabled = false })
 
--- Buat ikon kustom yang menggantikan tombol bawaan
+-- Buat ikon kustom
+local Players     = game:GetService("Players")
+local PlayerGui   = Players.LocalPlayer:WaitForChild("PlayerGui")
+local iconGui     = Instance.new("ScreenGui", PlayerGui)
+iconGui.Name      = "DevLogicIconGui"
 
-iconGui.Name    = "DevLogicIconGui"
-iconGui.Parent  = PlayerGui
-
-local iconButton        = Instance.new("ImageButton")
-iconButton.Name         = "DevLogicOpenButton"
-iconButton.Size         = UDim2.fromOffset(40, 40)         -- ukuran ikon
-iconButton.Position     = UDim2.new(0, 10, 0.5, -20)        -- posisi di layar
+local iconButton  = Instance.new("ImageButton")
+iconButton.Name   = "DevLogicOpenButton"
+iconButton.Size   = UDim2.fromOffset(40, 40)
+iconButton.Position = UDim2.new(0, 10, 0.5, -20)
 iconButton.BackgroundTransparency = 1
-iconButton.Image        = "rbxassetid://73063950477508"     -- ganti dengan asset ID ikon hub Anda
-iconButton.Parent       = iconGui
+iconButton.Image  = "rbxassetid://73063950477508" -- ganti dengan asset ID ikon Anda
+iconButton.Active = true      -- agar bisa menerima input
+iconButton.Draggable = true   -- membuat ikon bisa dipindah
+iconButton.Parent = iconGui
 
--- Klik ikon untuk membuka/menutup WindUI
+-- Awalnya jendela terbuka, jadi sembunyikan ikon
+iconButton.Visible = false
+
+-- Klik ikon untuk membuka jendela
 iconButton.MouseButton1Click:Connect(function()
+    -- buka jendela WindUI
     Window:Toggle()
+    -- sembunyikan ikon
+    iconButton.Visible = false
 end)
 
-
+-- Tampilkan kembali ikon ketika jendela WindUI ditutup
+if type(Window.OnClose) == "function" then
+    Window:OnClose(function()
+        iconButton.Visible = true
+    end)
+end
 -- … sisanya tetap sama (Tag, Changelog, Tabs, dsb.)
 
 Window:Tag({
@@ -176,18 +188,6 @@ local plantseed_tgl = plantseed_sec:Toggle({
 
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 
--- Sembunyikan ikon saat GUI dibuka, tampilkan lagi saat ditutup
-if type(Window.OnOpen) == "function" then
-    Window:OnOpen(function()
-        iconButton.Visible = false
-    end)
-end
-
-if type(Window.OnClose) == "function" then
-    Window:OnClose(function()
-        iconButton.Visible = true
-    end)
-end
 
 if type(Window.OnDestroy) == "function" then
     Window:OnDestroy(function()
@@ -201,5 +201,6 @@ if type(Window.OnDestroy) == "function" then
     end)
 
 end
+
 
 
