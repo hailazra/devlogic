@@ -498,7 +498,7 @@ function M.SetConfig(patch)
   for k,v in pairs(patch or {}) do CFG[k] = v end
 end
 
--- Debug function to inspect current game structure
+-- Debug function to inspect current game structure and specific fish ID
 function M.InspectGame()
   log("=== GAME INSPECTION ===")
   log("ReplicatedStorage children:")
@@ -516,11 +516,58 @@ function M.InspectGame()
   local count = 0
   for id,data in pairs(_fishData) do
     count = count + 1
-    if count <= 5 then -- Show first 5 entries
+    if count <= 10 then -- Show first 10 entries
       log("  " .. id .. " = " .. (data.name or "unnamed") .. " (" .. (data.rarity or "no rarity") .. ")")
     end
   end
-  log("  ... and " .. (count > 5 and (count-5) or 0) .. " more entries")
+  log("  ... total " .. count .. " entries")
+end
+
+-- Function to specifically lookup and debug a fish ID
+function M.DebugFishID(fishID)
+  local idStr = tostring(fishID)
+  log("=== DEBUGGING FISH ID: " .. idStr .. " ===")
+  
+  buildFishDatabase()
+  
+  -- Check in database
+  if _fishData[idStr] then
+    log("Found in database:")
+    for k,v in pairs(_fishData[idStr]) do
+      log("  " .. k .. " = " .. tostring(v))
+    end
+  else
+    log("NOT found in main database")
+  end
+  
+  -- Check manual maps
+  if CFG.ID_NAME_MAP[idStr] then
+    log("Found in ID_NAME_MAP: " .. CFG.ID_NAME_MAP[idStr])
+  end
+  if CFG.ID_RARITY_MAP[idStr] then  
+    log("Found in ID_RARITY_MAP: " .. CFG.ID_RARITY_MAP[idStr])
+  end
+  
+  -- Search manually in all registries
+  log("Manual search in registries:")
+  for _,root in ipairs(findRegistries()) do
+    for _,d in ipairs(root:GetDescendants()) do
+      local a = toAttrMap(d)
+      if a.Id == fishID or a.ItemId == fishID or a.TypeId == fishID or 
+         a.FishId == fishID or d.Name == idStr then
+        log("  Found match in: " .. d:GetFullName())
+        log("    Attributes:")
+        for k,v in pairs(a) do
+          log("      " .. k .. " = " .. tostring(v))
+        end
+      end
+    end
+  end
+end
+
+-- Auto-debug function for fish ID 161
+function M.Debug161()
+  M.DebugFishID(161)
 end
 
 return M
