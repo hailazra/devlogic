@@ -36,7 +36,8 @@ FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
     AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
-    AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua"
+    AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua",
+    AutoTeleportIsland = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -482,23 +483,65 @@ local teleisland_sec = TabTeleport:Section({
     TextSize = 17, -- Default Size
 })
 
+local autoTeleIslandFeature = nil
+local currentIsland = "Fisherman Island"
+
 local teleisland_dd = TabTeleport:Dropdown({
     Title = "Select Island",
-    Values = { "Fisherman Island", "Kohana", "Kohana Volcano", "Coral Reefs", "Esoteric Depths", "Tropical Grove", "Crater Island", "Lost Isle" },
-    Value = "Fisherman Island",
-    Callback = function(option) 
-        print("Category selected: " .. option) 
+    Values = {
+        "Fisherman Island",
+        "Esoteric Depths",
+        "Enchant Altar",
+        "Kohana",
+        "Kohana Volcano",
+        "Tropical Grove",
+        "Crater Island",
+        "Coral Reefs",
+        "Sisyphus Statue",
+        "Treasure Room"
+    },
+    Value = currentIsland,
+    Callback = function(option)
+        currentIsland = option
+        -- jika modul sudah dimuat, set island langsung
+        if autoTeleIslandFeature and autoTeleIslandFeature.SetIsland then
+            autoTeleIslandFeature:SetIsland(option)
+        end
     end
 })
 
+
 local teleisland_btn = TabTeleport:Button({
     Title = "Teleport To Island",
-    Desc = "",
+    Desc  = "",
     Locked = false,
-     Callback = function()
-        print("clicked")
+    Callback = function()
+        -- Muat modul jika belum pernah dimuat
+        if not autoTeleIslandFeature then
+            autoTeleIslandFeature = FeatureManager:LoadFeature("AutoTeleportIsland", {
+                dropdown = teleisland_dd,
+                button   = teleisland_btn
+            })
+        end
+        -- Jika modul berhasil dimuat, lakukan set dan teleport
+        if autoTeleIslandFeature then
+            if autoTeleIslandFeature.SetIsland then
+                autoTeleIslandFeature:SetIsland(currentIsland)
+            end
+            if autoTeleIslandFeature.Teleport then
+                autoTeleIslandFeature:Teleport(currentIsland)
+            end
+        else
+            WindUI:Notify({
+                Title   = "Error",
+                Content = "AutoTeleportIsland feature could not be loaded",
+                Icon    = "x",
+                Duration = 3
+            })
+        end
     end
 })
+
 
 local teleplayer_sec = TabTeleport:Section({ 
     Title = "Players",
