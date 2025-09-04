@@ -15,11 +15,9 @@ local Window = WindUI:CreateWindow({
     Icon          = "map",
     Author        = "logicdev",
     Folder        = ".devlogichub",
-    Theme         = "Dark",
-    Transparent   = true,
-    Resizable     = false,
-    SideBarWidth  = 140,
-    HideSearchBar = true,
+    Theme = "Dark",
+    Size  = UDim2.fromOffset(540, 400),
+    Resizable = true,
 })
 
 local Tab = Window:Tab({ Title = "Teleport", Icon = "map" })
@@ -174,3 +172,4 @@ Tab:Button({
         end
     end
 })
+
