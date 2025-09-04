@@ -9,8 +9,8 @@ local window = WindUI:CreateWindow({
     Folder = "PivotDetector",
     -- optional UI adjustments
     Theme = "Dark",
-    Size  = UDim2.fromOffset(540, 400),
-    Resizable = true,
+    Size  = UDim2.fromOffset(250, 250),
+    Resizable = false,
 })
 
 -- create a tab
@@ -56,7 +56,7 @@ local function refreshValues()
     pivotInput:Set(pivotStr)
     cframeInput:Set(cframeStr)
     -- optionally display a notification
-    WindUI:Notification({
+    WindUI:Notify({
         Title = "Updated",
         Desc = "Pivot and CFrame values have been refreshed.",
         Duration = 2,
@@ -68,7 +68,7 @@ local function copyToClipboard(text)
     if typeof(setclipboard) == "function" then
         -- use exploit's clipboard function
         setclipboard(text)
-        WindUI:Notification({
+        WindUI:Notify({
             Title = "Copied",
             Desc  = "Value has been copied to your clipboard.",
             Duration = 2,
@@ -76,7 +76,7 @@ local function copyToClipboard(text)
     else
         -- fallback: print to console
         warn("Clipboard API not available. Value:\n" .. text)
-        WindUI:Notification({
+        WindUI:Notify({
             Title = "Clipboard Unavailable",
             Desc  = "Value printed to console instead.",
             Duration = 3,
