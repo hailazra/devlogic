@@ -18,19 +18,42 @@ local Window = WindUI:CreateWindow({
 
 WindUI:SetFont("rbxasset://12187366657")
 
-Window:EditOpenButton({
-    Title = "",
-    Icon = "rbxassetid://73063950477508",
-    CornerRadius = UDim.new(0,1),
-    StrokeThickness = 1,
-    Color = ColorSequence.new( -- gradient
-        Color3.fromHex("000000"), 
-        Color3.fromHex("000000")
-    ),
-    OnlyMobile = false,
-    Enabled = true,
-    Draggable = true,
-})
+-- Nonaktifkan tombol open bawaan
+Window:EditOpenButton({ Enabled = false })
+
+-- Buat ikon kustom yang menggantikan tombol bawaan
+local Players   = game:GetService("Players")
+local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+local iconGui   = Instance.new("ScreenGui")
+iconGui.Name    = "DevLogicIconGui"
+iconGui.Parent  = PlayerGui
+
+local iconButton        = Instance.new("ImageButton")
+iconButton.Name         = "DevLogicOpenButton"
+iconButton.Size         = UDim2.fromOffset(40, 40)         -- ukuran ikon
+iconButton.Position     = UDim2.new(0, 10, 0.5, -20)        -- posisi di layar
+iconButton.BackgroundTransparency = 1
+iconButton.Image        = "rbxassetid://73063950477508"     -- ganti dengan asset ID ikon hub Anda
+iconButton.Parent       = iconGui
+
+-- Klik ikon untuk membuka/menutup WindUI
+iconButton.MouseButton1Click:Connect(function()
+    Window:Toggle()
+end)
+
+-- Sembunyikan ikon saat GUI dibuka, tampilkan lagi saat ditutup
+if type(Window.OnOpen) == "function" then
+    Window:OnOpen(function()
+        iconButton.Visible = false
+    end)
+end
+if type(Window.OnClose) == "function" then
+    Window:OnClose(function()
+        iconButton.Visible = true
+    end)
+end
+
+-- … sisanya tetap sama (Tag, Changelog, Tabs, dsb.)
 
 Window:Tag({
     Title = "v0.0.0",
@@ -180,3 +203,4 @@ if type(Window.OnDestroy) == "function" then
     end)
 
 end
+
