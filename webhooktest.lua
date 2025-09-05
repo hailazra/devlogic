@@ -1,24 +1,23 @@
 -- webhooktest.lua
--- FishCatchDetector v3.1.0 (NO-HOOK, Items ModuleScript aware)
--- .devlogic — Discord: send embed on fish catch
+-- FishCatchDetector v3.2.0 (NO-HOOK, Items ModuleScript aware, Image thumbnail)
 
 -- =========================
 -- CONFIG
 -- =========================
 local CFG = {
-  WEBHOOK_URL       = "https://discordapp.com/api/webhooks/1369085852071759903/clJFD_k9D4QeH6zZpylPId2464XJBLyGDafz8uiTotf2tReSNeZXcyIiJDdUDhu1CCzI",
-  CATCH_WINDOW_SEC  = 3,     -- jendela korelasi event/backpack
-  DEBUG             = true,  -- set true sementara untuk investigasi
-  WEIGHT_DECIMALS   = 2,     -- 2 → 6.70 kg
+  WEBHOOK_URL       = "https://discord.com/api/webhooks/XXXX/BBBB", -- <<< GANTI
+  CATCH_WINDOW_SEC  = 3,
+  DEBUG             = true,
+  WEIGHT_DECIMALS   = 2,
+  USE_LARGE_IMAGE   = false, -- false: thumbnail kecil di kanan; true: gambar besar di bawah embed
   INBOUND_EVENTS    = { "RE/FishCaught", "FishCaught", "FishingCompleted", "Caught", "Reward", "Fishing" },
-  USE_LARGE_IMAGE  = false, -- false = pakai thumbnail kecil di kanan; true = gambar besar di bawah embed
 
   -- Optional fallback maps (kalau ada ID unik yang bandel)
   ID_NAME_MAP       = {},
-  ID_RARITY_MAP     = {},    -- kalau ingin memaksa nama rarity untuk ID tertentu
+  ID_RARITY_MAP     = {},    -- pakai jika ingin paksa nama rarity utk ID tertentu
 }
 
--- Tier → Nama Rarity (sesuai spesifikasi kamu)
+-- Tier → Nama Rarity
 local TIER_NAME_MAP = {
   [1] = "Common",
   [2] = "Uncommon",
@@ -47,7 +46,7 @@ local M = getgenv().FishCatchDetector
 local _conns           = {}
 local _lastInbound     = {}   -- { {t, name, args=table.pack(...)} , ...}
 local _recentAdds      = {}   -- [Instance] = timestamp
-local _fishData        = nil  -- lazy-built: [idStr] = { name, chance, tier, rarityTier, rarityName, ... }
+local _fishData        = nil  -- lazy-built: [idStr] = { name, chance, tier, rarityTier, rarityName, icon, ... }
 local _itemsRoot       = nil
 local _indexBuilt      = false
 local _moduleById      = {}   -- [idStr] = ModuleScript
@@ -58,7 +57,8 @@ local _debounce        = 0
 -- =========================
 local function now() return os.clock() end
 local function log(...) if CFG.DEBUG then warn("[FCD]", ...) end end
--- Lebih robust: cari berbagai backend request yang umum di executor
+
+-- ==== HTTP sender (robust) ====
 local function getRequestFn()
   if syn and type(syn.request) == "function" then return syn.request end
   if http and type(http.request) == "function" then return http.request end
@@ -73,32 +73,26 @@ local function sendWebhook(payload)
     log("WEBHOOK_URL belum di-set (placeholder). Skip.")
     return
   end
-
   local req = getRequestFn()
   if not req then
     log("Tidak menemukan fungsi HTTP request (syn.request/http.request/http_request/request/fluxus.request).")
     return
   end
-
   local body = HttpService:JSONEncode(payload)
   local headers = {
     ["Content-Type"] = "application/json",
-    ["User-Agent"]   = "Mozilla/5.0" -- beberapa executor/nginx butuh UA
+    ["User-Agent"]   = "Mozilla/5.0"
   }
-
   local ok, res = pcall(req, {
     Url = CFG.WEBHOOK_URL,
     Method = "POST",
     Headers = headers,
     Body = body
   })
-
   if not ok then
     log("Webhook pcall error:", tostring(res))
     return
   end
-
-  -- Beberapa executor mengembalikan res.StatusCode/res.Status/res.Body
   local code = res.StatusCode or res.Status or res.StatusCodeLine
   local ok2xx = (type(code)=="number" and code >= 200 and code < 300)
   if not ok2xx then
@@ -138,10 +132,8 @@ end
 local function iconToHttpUrl(icon)
   local id = extractAssetId(icon)
   if not id then return nil end
-  -- Thumbnail publik Roblox (redirect ke CDN, aman buat Discord)
   return ("https://www.roblox.com/asset-thumbnail/image?assetId=%s&width=420&height=420&format=png"):format(id)
 end
-
 
 -- =========================
 -- Items ModuleScript Resolver (ReplicatedStorage.Items)
@@ -156,7 +148,6 @@ local function detectItemsRoot()
   }
   for _,root in ipairs(candidates) do
     if root then
-      -- heuristik: harus ada ModuleScript di bawahnya
       local foundMS = false
       for _,d in ipairs(root:GetDescendants()) do
         if d:IsA("ModuleScript") then foundMS = true break end
@@ -179,9 +170,8 @@ local function safeRequire(ms)
   if not ok or type(data) ~= "table" then return nil end
   -- Format contoh:
   -- return {
-  --   Data = { Id=65; Type="Fishes"; Name="Strawberry Dotty"; Tier=1; ... };
+  --   Data = { Id=65; Type="Fishes"; Name="Strawberry Dotty"; Tier=1; Icon="rbxassetid://..."; ... };
   --   Probability = { Chance = 0.05 };
-  --   Weight = { Default = NumberRange.new(min, max); Big = NumberRange.new(min, max) };
   -- }
   local D = data.Data or {}
   if D.Type ~= "Fishes" then return nil end
@@ -222,7 +212,6 @@ local function ensureLoadedById(idStr)
     return _fishData[idStr]
   end
   buildLightIndex()
-  -- 1) Module berdasarkan nama numerik, kalau ada
   local ms = _moduleById[idStr]
   if ms then
     local meta = safeRequire(ms)
@@ -240,7 +229,6 @@ local function ensureLoadedById(idStr)
       return _fishData[idStr]
     end
   end
-  -- 2) Scan semua ModuleScript di Items sampai ketemu Id yang sesuai
   local root = detectItemsRoot()
   for _,d in ipairs(root:GetDescendants()) do
     if d:IsA("ModuleScript") then
@@ -291,7 +279,7 @@ local function buildFishDatabase()
   if _fishData then return _fishData end
   _fishData = {}
 
-  -- 1) Ambil dari registry berbasis attributes/valueobjects (cepat)
+  -- 1) Cepat: atribut/ValueBase
   for _,root in ipairs(findRegistries()) do
     for _,d in ipairs(root:GetDescendants()) do
       if d:IsA("Folder") or d:IsA("Configuration") or d:IsA("ModuleScript") then
@@ -305,14 +293,15 @@ local function buildFishDatabase()
           slot.rarityTier  = slot.rarityTier  or a.RarityTier or a.Tier
           slot.rarityName  = slot.rarityName  or a.RarityName
           slot.tier        = slot.tier        or a.Tier
-          slot.chance      = slot.chance      or a.Chance or a.DropChance or a.Probability -- kadang float/percent
+          slot.chance      = slot.chance      or a.Chance or a.DropChance or a.Probability
+          slot.icon        = slot.icon        or a.Icon
           slot._source     = slot._source     or "registry"
         end
       end
     end
   end
 
-  -- 2) Enrich dari Items ModuleScript (lazy prefer, tapi kita coba seed cepat untuk ID yang namanya numerik)
+  -- 2) Seed dari Items ModuleScript (nama numerik)
   buildLightIndex()
   for idStr, ms in pairs(_moduleById) do
     if not _fishData[idStr] or not _fishData[idStr].name or not _fishData[idStr].chance then
@@ -325,6 +314,7 @@ local function buildFishDatabase()
         slot.rarityName  = slot.rarityName  or meta.rarityName
         slot.tier        = slot.tier        or meta.tier
         slot.chance      = slot.chance      or meta.chance
+        slot.icon        = slot.icon        or meta.icon
         slot._source     = "items"
       end
     end
@@ -339,18 +329,17 @@ end
 -- =========================
 local function absorb(dst, t)
   if type(t) ~= "table" then return end
-
   dst.id         = dst.id         or t.Id or t.ItemId or t.TypeId or t.UID or t.IdStr or t.FishId
   dst.name       = dst.name       or t.FishName or t.Name or t.ItemName or t.DisplayName or t.Species
   dst.weight     = dst.weight     or t.Weight or t.weight or t.Mass or t.WeightKg or t.Kg
   dst.chance     = dst.chance     or t.Chance or t.DropChance or t.Probability or t.chance
-  dst.tier       = dst.tier       or t.Tier                          -- <<< penting: simpan Tier
+  dst.tier       = dst.tier       or t.Tier
   dst.rarity     = dst.rarity     or t.Rarity or t.rarity or t.RarityName
   dst.rarityName = dst.rarityName or t.RarityName or t.rarityName
   dst.rarityTier = dst.rarityTier or t.RarityTier or t.tier or t.Tier
   dst.mutation   = dst.mutation   or t.Mutation or t.mutation
   dst.mutations  = dst.mutations  or t.Mutations or t.mutations or t.Modifiers or t.modifiers
-
+  dst.icon       = dst.icon       or t.Icon
   dst.fishType   = dst.fishType   or t.FishType or t.fishType
   dst.species    = dst.species    or t.Species or t.species
 end
@@ -367,9 +356,10 @@ local function deepAbsorb(dst, x, seen, depth)
     for k, v in pairs(x) do
       if type(k) == "string" then
         local lk = k:lower()
-        if lk:find("fish") or lk:find("name") or lk:find("rarity") or lk == "tier" then
+        if lk:find("fish") or lk:find("name") or lk:find("rarity") or lk == "tier" or lk=="icon" then
           if type(v) == "string" then
             if lk:find("name") and not dst.name then dst.name = v end
+            if lk=="icon" and not dst.icon then dst.icon = v end
             if lk:find("rarity") and not dst.rarity then dst.rarity = v end
           elseif type(v) == "number" and lk == "tier" and not dst.tier then
             dst.tier = v
@@ -433,16 +423,11 @@ end
 local function decode_RE_FishCaught(packed)
   local info = {}
   argProbePacked("RE/FishCaught", packed)
+  for i=1,(packed.n or #packed) do deepAbsorb(info, packed[i]) end
 
-  for i=1,(packed.n or #packed) do
-    deepAbsorb(info, packed[i])
-  end
-
-  -- Enrich by ID from Items / Registry
   if info.id then
     buildFishDatabase()
     local idStr = toIdStr(info.id)
-    -- prefer Items resolve (lazy)
     local fromItems = ensureLoadedById(idStr)
     local DB = _fishData[idStr]
     local fishInfo = fromItems or DB
@@ -452,10 +437,10 @@ local function decode_RE_FishCaught(packed)
       info.tier       = info.tier       or fishInfo.tier or fishInfo.rarityTier
       info.rarityName = info.rarityName or fishInfo.rarityName
       info.rarityTier = info.rarityTier or fishInfo.rarityTier or fishInfo.tier
+      info.icon       = info.icon       or fishInfo.icon
     end
   end
 
-  -- Manual override maps
   local idS = info.id and toIdStr(info.id)
   if idS and not info.name and CFG.ID_NAME_MAP[idS] then info.name = CFG.ID_NAME_MAP[idS] end
   if idS and not info.rarity and CFG.ID_RARITY_MAP[idS] then info.rarity = CFG.ID_RARITY_MAP[idS] end
@@ -480,6 +465,7 @@ local function decode_generic(packed)
       info.tier       = info.tier       or fishInfo.tier or fishInfo.rarityTier
       info.rarityName = info.rarityName or fishInfo.rarityName
       info.rarityTier = info.rarityTier or fishInfo.rarityTier or fishInfo.tier
+      info.icon       = info.icon       or fishInfo.icon
     end
   end
 
@@ -507,7 +493,6 @@ local function parseChanceToProb(ch)
   local n = tonumber(ch)
   if not n or n <= 0 then return nil end
   if n > 1 then
-    -- interpret sebagai persen
     return n / 100.0
   else
     return n
@@ -529,7 +514,6 @@ local function getTierName(info)
   return tier and tostring(tier) or "Unknown"
 end
 
--- Mutations formatter
 local function formatMutations(info)
   if type(info.mutations) == "table" then
     local t = {}
@@ -560,8 +544,9 @@ local function send(info, origin)
     local slot = _fishData[toIdStr(info.id)]
     if slot and slot.name then fishName = slot.name end
   end
+  local mut = formatMutations(info)
 
-  -- Cari icon (prioritas: dari info → dari DB Items)
+  -- Cari icon (prioritas: dari info → DB Items)
   local iconSource = info.icon
   if (not iconSource) and info.id then
     buildFishDatabase()
@@ -570,9 +555,7 @@ local function send(info, origin)
   end
   local thumbUrl = iconToHttpUrl(iconSource)
 
-  local mut = formatMutations(info)
-
-    local embed = {
+  local embed = {
     title = "🐟 New Catch: " .. fishName,
     description = ("**Player:** %s\n**Origin:** %s"):format(LP.Name, origin or "unknown"),
     timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
@@ -584,20 +567,12 @@ local function send(info, origin)
       { name="Fish ID",      value=info.id or "Unknown",     inline=true },
     }
   }
-
   if thumbUrl then
-    if CFG.USE_LARGE_IMAGE then
-      embed.image = { url = thumbUrl }
-    else
-      embed.thumbnail = { url = thumbUrl }
-    end
+    if CFG.USE_LARGE_IMAGE then embed.image = { url = thumbUrl }
+    else embed.thumbnail = { url = thumbUrl } end
   end
 
-  sendWebhook({
-    username = ".devlogic notifier",
-    embeds = { embed }
-  })
-
+  sendWebhook({ username = ".devlogic notifier", embeds = { embed } })
   log("Sent webhook:", fishName, "Chance=", fmtChanceOneIn(info), "Tier=", getTierName(info))
 end
 
@@ -614,7 +589,6 @@ local function onCatchWindow()
       end
     end
   end
-
   -- 2) Backpack delta
   for inst, t0 in pairs(_recentAdds) do
     if inst.Parent == Backpack and now() - t0 <= CFG.CATCH_WINDOW_SEC then
@@ -628,12 +602,12 @@ local function onCatchWindow()
         mutations = a.Mutations,
         id        = a.Id or a.ItemId or a.TypeId or a.FishId,
         chance    = a.Chance or a.DropChance or a.Probability,
+        icon      = a.Icon
       }
       send(info, "Backpack:"..inst.Name)
       return
     end
   end
-
   -- 3) Fallback
   if CFG.DEBUG then
     log("No detailed info; sending fallback")
@@ -692,25 +666,27 @@ end
 -- =========================
 function M.Start(opts)
   if opts then for k,v in pairs(opts) do CFG[k] = v end end
-
   task.spawn(function()
     buildFishDatabase()
     log("Fish database initialized.")
   end)
-
   connectSignals()
-  log("FCD v3.1.0 started. DEBUG=", CFG.DEBUG)
+  log("FCD v3.2.0 started. DEBUG=", CFG.DEBUG)
 end
 
 function M.Kill()
   for _,c in ipairs(_conns) do pcall(function() c:Disconnect() end) end
   safeClear(_conns); safeClear(_lastInbound); safeClear(_recentAdds)
-  log("FCD v3.1.0 stopped.")
+  log("FCD v3.2.0 stopped.")
 end
 
 function M.SetConfig(patch) for k,v in pairs(patch or {}) do CFG[k] = v end end
 
--- Debug helper (opsional)
+function M.TestWebhook(msg)
+  local content = msg or "Test ping from FishCatchDetector"
+  sendWebhook({ username = ".devlogic notifier", content = content })
+end
+
 function M.InspectGame()
   log("=== GAME INSPECTION ===")
   log("ReplicatedStorage children:")
