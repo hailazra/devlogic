@@ -509,16 +509,16 @@ local function sendEmbed(info, origin)
     end
     
     local embed = {
-        title = "🐟 New Catch: " .. fishName,
+        title = "🎣 New Catch: " .. fishName,
         description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
         color = 0x87CEEB,
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
         footer = { text = ".devlogic Fish Notifier" },
         fields = {
-            {name = "Weight", value = toKg(info.weight), inline = true},
-            {name = "Chance", value = fmtChanceOneInFromNumber(info.chance), inline = true},
-            {name = "Rarity", value = getTierName(info.tier), inline = true},
-            {name = "Mutation(s)", value = formatMutations(info.mutations or info.mutation), inline = false},
+            {name = "⚖️Weight", value = toKg(info.weight), inline = true},
+            {name = "🎯Chance", value = fmtChanceOneInFromNumber(info.chance), inline = true},
+            {name = "✨Rarity", value = getTierName(info.tier), inline = true},
+            {name = "🧬Mutation(s)", value = formatMutations(info.mutations or info.mutation), inline = false},
             {name = "Fish ID", value = info.id and tostring(info.id) or "Unknown", inline = true},
         }
     }
