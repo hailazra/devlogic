@@ -18,8 +18,8 @@ local CFG = {
   RARE_WINDOW_SEC      = 10.0,
 
   -- Gambar
-  USE_LARGE_IMAGE      = true,
-  THUMB_SIZE           = "420x420",
+  USE_LARGE_IMAGE      = false,
+  THUMB_SIZE           = "150x150",
 
   -- Event utama + pola hook event rare tanpa scan berat
   INBOUND_EVENTS       = { "RE/FishCaught" }, -- baseline
