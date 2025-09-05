@@ -508,22 +508,30 @@ local function sendEmbed(info, origin)
         log("Image URL:", tostring(imageUrl)) 
     end
 
-    
+    -- bikin "box" di Discord embed (inline code)
+    local function box(v)
+    v = v == nil and "Unknown" or tostring(v)
+    v = v:gsub("`", "ˋ") -- ganti backtick biar gak nutup formatting
+    return string.format("`%s`", v)
+    end
+
     
     local embed = {
-        title = "🎣 New Catch: " .. fishName,
-        description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
-        color = 0x87CEEB,
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-        footer = { text = ".devlogic Fish Notifier" },
-        fields = {
-            {name = "⚖️Weight", value = toKg(info.weight), inline = true},
-            {name = "🎯Chance", value = fmtChanceOneInFromNumber(info.chance), inline = true},
-            {name = "✨Rarity", value = getTierName(info.tier), inline = true},
-            {name = "🧬Mutation(s)", value = formatMutations(info.mutations or info.mutation), inline = false},
-            {name = "Fish ID", value = info.id and tostring(info.id) or "Unknown", inline = true},
-        }
+    title = "🎣 New Catch: " .. fishName,
+    description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
+    color = 0x87CEEB,
+    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+    footer = { text = ".devlogic Fish Notifier" },
+    fields = {
+        { name = "Fish Name 🐟",   value = box(fishName),                              inline = false },
+        { name = "⚖️ Weight",      value = box(toKg(info.weight)),                     inline = true  },
+        { name = "🎲 Chance",       value = box(fmtChanceOneInFromNumber(info.chance)), inline = true  },
+        { name = "💎 Rarity",       value = box(getTierName(info.tier)),                inline = true  },
+        { name = "🧬 Mutation(s)",  value = box(formatMutations(info.mutations or info.mutation)), inline = false },
+        { name = "Fish ID",         value = box(info.id and tostring(info.id) or "Unknown"),       inline = true  },
     }
+}
+
     
     if imageUrl then
         if CONFIG.USE_LARGE_IMAGE then
