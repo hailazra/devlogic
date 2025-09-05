@@ -5,7 +5,7 @@
 -- CONFIG
 -- =========================
 local CFG = {
-  WEBHOOK_URL       = "https://discord.com/api/webhooks/XXXX/BBBB", -- <<< GANTI
+  WEBHOOK_URL       = "https://discordapp.com/api/webhooks/1369085852071759903/clJFD_k9D4QeH6zZpylPId2464XJBLyGDafz8uiTotf2tReSNeZXcyIiJDdUDhu1CCzI", -- <<< GANTI
   CATCH_WINDOW_SEC  = 3,
   DEBUG             = true,
   WEIGHT_DECIMALS   = 2,
@@ -68,119 +68,39 @@ local function getRequestFn()
   return nil
 end
 
--- Normalisasi URL (hapus spasi/newline, dan siapkan fallback domain)
-local function normalizeWebhookUrl(url)
-  if not url or url == "" then return nil end
-  url = tostring(url):gsub("%s+", "") -- trim all whitespace
-  -- Pastikan pakai https
-  if url:sub(1,5) ~= "https" then
-    url = url:gsub("^http://", "https://")
-  end
-  return url
-end
-
-local function tryRequest(url, payloadTbl)
-  local req = getRequestFn()
-  if not req then
-    log("HTTP backend tidak ditemukan.")
-    return false, "no_request_fn"
-  end
-  local jsonBody = HttpService:JSONEncode(payloadTbl)
-
-  local headers = {
-    ["Content-Type"] = "application/json",
-    ["User-Agent"]   = "Mozilla/5.0",
-    ["Accept"]       = "*/*",
-  }
-
-  -- Beberapa executor sensitif ke kapitalisasi key
-  local requestObj = {
-    Url     = url,
-    Method  = "POST",
-    Headers = headers,
-    Body    = jsonBody,
-    -- beberapa engine paham field ekstra ini:
-    Redirect = true,
-    Timeout  = 15000,
-    ssl      = true,
-  }
-
-  local ok, res = pcall(req, requestObj)
-  if not ok then
-    log("pcall error:", tostring(res))
-    return false, tostring(res)
-  end
-
-  local code = tonumber(res.StatusCode or res.Status) or 0
-  local ok2xx = (code >= 200 and code < 300)
-  if not ok2xx then
-    log("HTTP status:", code, " body:", tostring(res.Body))
-  else
-    log("Webhook terkirim (", code, ")")
-  end
-  return ok2xx, code
-end
-
--- Versi super-bandelnya: coba beberapa variasi payload & domain
 local function sendWebhook(payload)
-  local baseUrl = normalizeWebhookUrl(CFG.WEBHOOK_URL)
-  if not baseUrl or baseUrl:find("XXXX/BBBB") then
-    log("WEBHOOK_URL belum di-set / masih placeholder. Skip.")
+  if not CFG.WEBHOOK_URL or CFG.WEBHOOK_URL:find("XXXX/BBBB") then
+    log("WEBHOOK_URL belum di-set (placeholder). Skip.")
     return
   end
-
-  -- 1) siapkan 3 variasi payload
-  local p_full = payload
-
-  -- (a) embed tanpa gambar (hapus image/thumbnail bila ada)
-  local p_noimg = HttpService:JSONDecode(HttpService:JSONEncode(payload)) -- deep copy via JSON
-  if p_noimg.embeds and p_noimg.embeds[1] then
-    p_noimg.embeds[1].image = nil
-    p_noimg.embeds[1].thumbnail = nil
+  local req = getRequestFn()
+  if not req then
+    log("Tidak menemukan fungsi HTTP request (syn.request/http.request/http_request/request/fluxus.request).")
+    return
   end
-
-  -- (b) fallback content-only (ringkas, selalu diterima)
-  local summary = ""
-  if payload and payload.embeds and payload.embeds[1] then
-    local e = payload.embeds[1]
-    local fishTitle = e.title or "New Catch"
-    local fields = e.fields or {}
-    local parts = { fishTitle }
-    for _,f in ipairs(fields) do
-      table.insert(parts, (f.name or "")..": "..(f.value or ""))
-    end
-    summary = table.concat(parts, " | ")
+  local body = HttpService:JSONEncode(payload)
+  local headers = {
+    ["Content-Type"] = "application/json",
+    ["User-Agent"]   = "Mozilla/5.0"
+  }
+  local ok, res = pcall(req, {
+    Url = CFG.WEBHOOK_URL,
+    Method = "POST",
+    Headers = headers,
+    Body = body
+  })
+  if not ok then
+    log("Webhook pcall error:", tostring(res))
+    return
+  end
+  local code = res.StatusCode or res.Status or res.StatusCodeLine
+  local ok2xx = (type(code)=="number" and code >= 200 and code < 300)
+  if not ok2xx then
+    log("Webhook HTTP status:", tostring(code), " Body:", tostring(res.Body))
   else
-    summary = "FishCatchDetector: event captured."
+    log("Webhook terkirim (", tostring(code), ")")
   end
-  local p_text = {
-    username = (payload and payload.username) or ".devlogic notifier",
-    content  = summary
-  }
-
-  -- 2) domain fallback: discord.com → discordapp.com
-  local altUrl = baseUrl:gsub("://discord%.com", "://discordapp.com")
-
-  -- 3) urutan percobaan
-  local plan = {
-    { baseUrl, p_full,   "full+img" },
-    { baseUrl, p_noimg,  "embed-noimg" },
-    { baseUrl, p_text,   "content-only" },
-    { altUrl,  p_full,   "alt full+img" },
-    { altUrl,  p_noimg,  "alt embed-noimg" },
-    { altUrl,  p_text,   "alt content-only" },
-  }
-
-  for i, step in ipairs(plan) do
-    local url, pay, tag = step[1], step[2], step[3]
-    local ok, info = tryRequest(url, pay)
-    log(("try[%d] %s -> %s"):format(i, tag, ok and "OK" or "FAIL"))
-    if ok then return end
-  end
-
-  log("Gagal mengirim webhook setelah semua percobaan.")
 end
-
 
 local function safeClear(t)
   if table and table.clear then table.clear(t) else for k in pairs(t) do t[k] = nil end end
