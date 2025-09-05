@@ -507,6 +507,8 @@ local function sendEmbed(info, origin)
     if CONFIG.DEBUG then 
         log("Image URL:", tostring(imageUrl)) 
     end
+
+    
     
     local embed = {
         title = "🎣 New Catch: " .. fishName,
