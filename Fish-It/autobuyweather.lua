@@ -217,14 +217,26 @@ end
 
 -- ========= setters =========
 -- list: table of strings (akan di-unique + clamp 3 + filter only buyable)
-function AutoBuyWeather:SetWeathers(list)
-    if typeof(list) ~= "table" then return false end
-    -- refresh buyable cache
+function AutoBuyWeather:SetWeathers(listOrSet)
+    if typeof(listOrSet) ~= "table" then return false end
+    -- koersi: dukung array {"A","B"} atau set {A=true,B=true}
+    local arr = {}
+    if #listOrSet > 0 then
+        -- array
+        for _, v in ipairs(listOrSet) do
+            if type(v) == "string" and v ~= "" then table.insert(arr, v) end
+        end
+    else
+        -- set/dict
+        for k, v in pairs(listOrSet) do
+            if v and type(k) == "string" and k ~= "" then table.insert(arr, k) end
+        end
+    end
+    -- unique + clamp 3 + filter buyable
     if not buyableMap then buyableMap = scanBuyables() end
-
     local seen, out = {}, {}
-    for _, name in ipairs(list) do
-        if type(name) == "string" and name ~= "" and buyableMap[name] and not seen[name] then
+    for _, name in ipairs(arr) do
+        if buyableMap[name] and not seen[name] then
             table.insert(out, name)
             seen[name] = true
             if #out >= 3 then break end
@@ -234,6 +246,7 @@ function AutoBuyWeather:SetWeathers(list)
     nextIdx = 1
     return #selectedWeathers > 0
 end
+
 
 function AutoBuyWeather:SetInterPurchaseDelay(sec)
     if type(sec) ~= "number" then return false end
