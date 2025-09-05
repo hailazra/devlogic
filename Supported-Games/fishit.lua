@@ -474,13 +474,13 @@ end
 
 -- Multi dropdown (Values diisi setelah modul diload)
 local shopweather_ddm = TabShop:Dropdown({
-    Title     = "Select Weather (max 3)",
-    Desc      = "Pilih hingga 3 cuaca untuk auto-buy",
-    Values    = BUYABLE_WEATHER_OPTIONS,                 -- diisi setelah load
-    Value     = {},                 -- default kosong
+    Title     = "Select Weather",
+    Desc      = "",
+    Values    = BUYABLE_WEATHER_OPTIONS,
+    Value     = {},
     Multi     = true,
     AllowNone = true,
-    Callback  = function(options)   -- <== array of strings (sesuai pola webhook)
+    Callback  = function(options)
         -- rebuild set
         selectedWeatherSet = {}
         for _, opt in ipairs(options) do
@@ -489,7 +489,7 @@ local shopweather_ddm = TabShop:Dropdown({
             end
         end
         if weatherFeature and weatherFeature.SetWeathers then
-            weatherFeature:SetWeathers(selectedWeatherSet) -- modul terima set/array
+            weatherFeature:SetWeathers(selectedWeatherSet)
         end
     end
 })
