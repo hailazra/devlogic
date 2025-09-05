@@ -57,22 +57,56 @@ local _debounce        = 0
 -- =========================
 local function now() return os.clock() end
 local function log(...) if CFG.DEBUG then warn("[FCD]", ...) end end
-local function http()
-  return (syn and syn.request) or http_request or request or (fluxus and fluxus.request)
+-- Lebih robust: cari berbagai backend request yang umum di executor
+local function getRequestFn()
+  if syn and type(syn.request) == "function" then return syn.request end
+  if http and type(http.request) == "function" then return http.request end
+  if type(http_request) == "function" then return http_request end
+  if type(request) == "function" then return request end
+  if fluxus and type(fluxus.request) == "function" then return fluxus.request end
+  return nil
 end
+
 local function sendWebhook(payload)
-  local req = http()
-  if not req then
-    log("HTTP request function not found; webhook skipped.")
+  if not CFG.WEBHOOK_URL or CFG.WEBHOOK_URL:find("XXXX/BBBB") then
+    log("WEBHOOK_URL belum di-set (placeholder). Skip.")
     return
   end
-  req({
+
+  local req = getRequestFn()
+  if not req then
+    log("Tidak menemukan fungsi HTTP request (syn.request/http.request/http_request/request/fluxus.request).")
+    return
+  end
+
+  local body = HttpService:JSONEncode(payload)
+  local headers = {
+    ["Content-Type"] = "application/json",
+    ["User-Agent"]   = "Mozilla/5.0" -- beberapa executor/nginx butuh UA
+  }
+
+  local ok, res = pcall(req, {
     Url = CFG.WEBHOOK_URL,
     Method = "POST",
-    Headers = { ["Content-Type"] = "application/json" },
-    Body = HttpService:JSONEncode(payload)
+    Headers = headers,
+    Body = body
   })
+
+  if not ok then
+    log("Webhook pcall error:", tostring(res))
+    return
+  end
+
+  -- Beberapa executor mengembalikan res.StatusCode/res.Status/res.Body
+  local code = res.StatusCode or res.Status or res.StatusCodeLine
+  local ok2xx = (type(code)=="number" and code >= 200 and code < 300)
+  if not ok2xx then
+    log("Webhook HTTP status:", tostring(code), " Body:", tostring(res.Body))
+  else
+    log("Webhook terkirim (", tostring(code), ")")
+  end
 end
+
 local function safeClear(t)
   if table and table.clear then table.clear(t) else for k in pairs(t) do t[k] = nil end end
 end
