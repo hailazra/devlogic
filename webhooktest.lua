@@ -9,7 +9,7 @@ local CFG = {
   CATCH_WINDOW_SEC  = 3,
   DEBUG             = true,
   WEIGHT_DECIMALS   = 2,
-  USE_LARGE_IMAGE   = false, -- false: thumbnail kecil di kanan; true: gambar besar di bawah embed
+  USE_LARGE_IMAGE   = true, -- false: thumbnail kecil di kanan; true: gambar besar di bawah embed
   INBOUND_EVENTS    = { "RE/FishCaught", "FishCaught", "FishingCompleted", "Caught", "Reward", "Fishing" },
 
   -- Optional fallback maps (kalau ada ID unik yang bandel)
