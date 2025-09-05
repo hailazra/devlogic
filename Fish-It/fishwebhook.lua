@@ -510,15 +510,16 @@ local function sendEmbed(info, origin)
     
     local embed = {
         title = "🐟 New Catch: " .. fishName,
-        description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+        description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name ),
+        timestamp = os.date(".devlogic", "!%Y-%m-%dT%H:%M:%SZ"),
         fields = {
             {name = "Weight", value = toKg(info.weight), inline = true},
             {name = "Chance", value = fmtChanceOneInFromNumber(info.chance), inline = true},
             {name = "Rarity", value = getTierName(info.tier), inline = true},
             {name = "Mutation(s)", value = formatMutations(info.mutations or info.mutation), inline = false},
             {name = "Fish ID", value = info.id and tostring(info.id) or "Unknown", inline = true},
-        }
+        },
+        color = 0x000000, 
     }
     
     if imageUrl then
