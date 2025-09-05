@@ -37,7 +37,8 @@ FeatureManager.LoadedFeatures = {}
 local FEATURE_URLS = {
     AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
     AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua",
-    AutoTeleportIsland = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua"
+    AutoTeleportIsland = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua",
+    FishWebhook     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/fishwebhook.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -637,33 +638,145 @@ local webhookfish_sec = TabMisc:Section({
     TextSize = 17, -- Default Size
 })
 
+-- State variables untuk webhook
+local fishWebhookFeature = nil
+local currentWebhookUrl = ""
+local selectedWebhookFishTypes = {}
+
+-- Daftar tier ikan yang bisa dipilih
+local FISH_TIERS = {
+    "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret"
+}
+
+-- Gabungkan opsi untuk dropdown
+local WEBHOOK_FISH_OPTIONS = {}
+for _, tier in ipairs(FISH_TIERS) do
+    table.insert(WEBHOOK_FISH_OPTIONS, tier)
+end
+
 local webhookfish_in = TabMisc:Input({
-    Title = "Webhook URL",
-    Desc = "Input Webhook URL",
+    Title = "Discord Webhook URL",
+    Desc = "Paste your Discord webhook URL here",
     Value = "",
-    Placeholder = "discord.gg//",
-    Type = "Input", 
-    Callback = function(input) 
-        print("delay entered: " .. input)
+    Placeholder = "https://discord.com/api/webhooks/...",
+    Type = "Input",
+    Callback = function(input)
+        currentWebhookUrl = input
+        print("[Webhook] URL updated:", input:sub(1, 50) .. (input:len() > 50 and "..." or ""))
+        
+        -- Update webhook URL jika feature sudah dimuat
+        if fishWebhookFeature and fishWebhookFeature.SetWebhookUrl then
+            fishWebhookFeature:SetWebhookUrl(input)
+        end
     end
 })
 
 local webhookfish_dd = TabMisc:Dropdown({
-    Title = "Select Fish",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = { "Category A" },
+    Title = "Select Rarity",
+    Desc = "Choose which fish types/rarities to send to webhook",
+    Values = WEBHOOK_FISH_OPTIONS,
+    Value = {"Legendary", "Mythic", "Secret"}, -- Default selection
     Multi = true,
     AllowNone = true,
-    Callback = function(option) 
-        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    Callback = function(options)
+        selectedWebhookFishTypes = {}
+        for _, option in ipairs(options) do
+            selectedWebhookFishTypes[option] = true
+        end
+        
+        print("[Webhook] Fish types selected:", HttpService:JSONEncode(options))
+        
+        -- Update selected fish types jika feature sudah dimuat
+        if fishWebhookFeature and fishWebhookFeature.SetSelectedFishTypes then
+            fishWebhookFeature:SetSelectedFishTypes(selectedWebhookFishTypes)
+        end
     end
 })
 
+
 local webhookfish_tgl = TabMisc:Toggle({
-    Title = "Webhook",
+    Title = "Enable Fish Webhook",
+    Desc = "Automatically send notifications when catching selected fish types",
     Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+    Callback = function(state)
+        print("[Webhook] Toggle:", state)
+        
+        if state then
+            -- Validasi input
+            if currentWebhookUrl == "" then
+                WindUI:Notify({
+                    Title = "Error", 
+                    Content = "Please enter webhook URL first",
+                    Icon = "x",
+                    Duration = 3
+                })
+                webhookfish_tgl:Set(false) -- Reset toggle
+                return
+            end
+            
+            if next(selectedWebhookFishTypes) == nil then
+                WindUI:Notify({
+                    Title = "Warning",
+                    Content = "No fish types selected - will monitor all catches",
+                    Icon = "alert-triangle",
+                    Duration = 3
+                })
+            end
+            
+            -- Load feature jika belum dimuat
+            if not fishWebhookFeature then
+                fishWebhookFeature = FeatureManager:LoadFeature("FishWebhook", {
+                    urlInput = webhookfish_in,
+                    fishTypesDropdown = webhookfish_dd,
+                    testButton = webhooktest_btn,
+                    toggle = webhookfish_tgl
+                })
+            end
+            
+            -- Start webhook monitoring
+            if fishWebhookFeature and fishWebhookFeature.Start then
+                local success = fishWebhookFeature:Start({
+                    webhookUrl = currentWebhookUrl,
+                    selectedFishTypes = selectedWebhookFishTypes
+                })
+                
+                if success then
+                    WindUI:Notify({
+                        Title = "Webhook Active",
+                        Content = "Fish notifications enabled",
+                        Icon = "check",
+                        Duration = 2
+                    })
+                else
+                    webhookfish_tgl:Set(false)
+                    WindUI:Notify({
+                        Title = "Start Failed",
+                        Content = "Could not start webhook monitoring",
+                        Icon = "x", 
+                        Duration = 3
+                    })
+                end
+            else
+                webhookfish_tgl:Set(false)
+                WindUI:Notify({
+                    Title = "Load Failed",
+                    Content = "Could not load webhook feature",
+                    Icon = "x",
+                    Duration = 3
+                })
+            end
+        else
+            -- Stop webhook monitoring
+            if fishWebhookFeature and fishWebhookFeature.Stop then
+                fishWebhookFeature:Stop()
+                WindUI:Notify({
+                    Title = "Webhook Stopped",
+                    Content = "Fish notifications disabled",
+                    Icon = "info",
+                    Duration = 2
+                })
+            end
+        end
     end
 })
 
