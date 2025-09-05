@@ -7,7 +7,7 @@
 -- CONFIG
 -- =========================
 local CFG = {
-  WEBHOOK_URL          = "https://discord.com/api/webhooks/XXXX/BBBB", -- <<< GANTI
+  WEBHOOK_URL          = "https://discordapp.com/api/webhooks/1369085852071759903/clJFD_k9D4QeH6zZpylPId2464XJBLyGDafz8uiTotf2tReSNeZXcyIiJDdUDhu1CCzI", -- <<< GANTI
   DEBUG                = true,
   WEIGHT_DECIMALS      = 2,
 
@@ -21,8 +21,8 @@ local CFG = {
   DEDUP_TTL_SEC        = 12.0,
 
   -- Gambar
-  USE_LARGE_IMAGE      = true,
-  THUMB_SIZE           = "420x420",
+  USE_LARGE_IMAGE      = false,
+  THUMB_SIZE           = "150x150",
 
   -- Event utama + pola hook event rare tanpa scan berat
   INBOUND_EVENTS       = { "RE/FishCaught" }, -- baseline
