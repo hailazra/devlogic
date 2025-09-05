@@ -503,6 +503,11 @@ local function sendEmbed(info, origin)
     elseif info.id and metaById[toIdStr(info.id)] and metaById[toIdStr(info.id)].icon then
         imageUrl = resolveIconUrl(metaById[toIdStr(info.id)].icon)
     end
+
+    -- ADD THIS fallback:
+    if not imageUrl and info.id then
+    imageUrl = resolveIconUrl(info.id) -- pakai assetId langsung
+    end
     
     if CONFIG.DEBUG then 
         log("Image URL:", tostring(imageUrl)) 
