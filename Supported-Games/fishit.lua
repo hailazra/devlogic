@@ -464,8 +464,8 @@ local selectedList   = {}
 
 local shopweather_ddm = TabShop:Dropdown({
     Title = "Select Weather",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = { "Category A" },
+    Values = {},
+    Value = {},
     Multi = true,
     AllowNone = true,
     Callback = function(option)
