@@ -38,7 +38,8 @@ local FEATURE_URLS = {
     AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
     AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua",
     AutoTeleportIsland = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua",
-    FishWebhook     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/fishwebhook.lua"
+    FishWebhook     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/fishwebhook.lua",
+    AutoBuyWeather = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyweather.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -458,23 +459,53 @@ local shopweather_sec = TabShop:Section({
     TextSize = 17, -- Default Size
 })
 
+local weatherFeature = nil
+local selectedList   = {}
+
 local shopweather_ddm = TabShop:Dropdown({
     Title = "Select Weather",
     Values = { "Category A", "Category B", "Category C" },
     Value = { "Category A" },
     Multi = true,
     AllowNone = true,
-    Callback = function(option) 
-        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    Callback = function(option)
+    if typeof(option) ~= "table" then option = {option} end
+    selectedList = option
+    if weatherFeature and weatherFeature.SetWeathers then
+      weatherFeature:SetWeathers(selectedList)
     end
+  end
 })
 
 local shopweather_tgl = TabShop:Toggle({
     Title = "Auto Buy Weather",
     Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+   Callback = function(state)
+    if state then
+      if not weatherFeature then
+        weatherFeature = FeatureManager:LoadFeature("AutoBuyWeather", {
+          weatherDropdownMulti = shopweather_ddm,
+          toggle                = shopweather_tgl,
+        })
+        -- isi opsi dropdown saat modul berhasil di-load
+        if weatherFeature and weatherFeature.GetBuyableWeathers then
+          local names = weatherFeature:GetBuyableWeathers()
+          if shopweather_ddm.Reload then shopweather_ddm:Reload(names)
+          elseif shopweather_ddm.SetOptions then shopweather_ddm:SetOptions(names) end
+        end
+      end
+      if weatherFeature and weatherFeature.Start then
+        weatherFeature:Start({
+          weatherList = selectedList  -- TIDAK perlu interDelay
+        })
+      else
+        shopweather_tgls:Set(false)
+        WindUI:Notify({Title="Failed", Content="Could not start AutoBuyWeather", Icon="x", Duration=3})
+      end
+    else
+      if weatherFeature and weatherFeature.Stop then weatherFeature:Stop() end
     end
+  end
 })
 
 --- === Teleport === ---
@@ -671,7 +702,7 @@ local webhookfish_in = TabMisc:Input({
     end
 })
 
-local webhookfish_dd = TabMisc:Dropdown({
+local webhookfish_ddm = TabMisc:Dropdown({
     Title = "Select Rarity",
     Desc = "Choose which fish types/rarities to send to webhook",
     Values = WEBHOOK_FISH_OPTIONS,
