@@ -468,9 +468,9 @@ local shopweather_ddm = TabShop:Dropdown({
     Value = {},
     Multi = true,
     AllowNone = true,
-    Callback = function(option)
-    if typeof(option) ~= "table" then option = {option} end
-    selectedList = option
+    Callback = function(val)
+    if typeof(val) ~= "table" then val = {val} end
+    selectedList = val
     if weatherFeature and weatherFeature.SetWeathers then
       weatherFeature:SetWeathers(selectedList)
     end
