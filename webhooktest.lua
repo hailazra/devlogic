@@ -12,7 +12,7 @@ local CFG = {
   WEIGHT_DECIMALS      = 2,
   CATCH_WINDOW_SEC     = 2.5,   -- korelasi event <-> trigger
   USE_LARGE_IMAGE      = true,  -- true: gambar besar; false: thumbnail kecil
-  THUMB_SIZE           = "420x420", -- 150x150, 420x420, 720x720
+  THUMB_SIZE           = "150x150", -- 150x150, 420x420, 720x720
   PRELOAD_ITEM_COUNT   = 0,     -- 0 = tidak preload; >0 = pre-require N module pertama (hati2 lag)
   USE_BACKPACK_FALLBACK= false, -- default OFF (fokus 3 sumber utama)
   USE_REGISTRY_FALLBACK= false, -- default OFF (hindari scan besar)
