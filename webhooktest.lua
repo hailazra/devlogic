@@ -11,6 +11,7 @@ local CFG = {
   DEBUG             = true,  -- set true sementara untuk investigasi
   WEIGHT_DECIMALS   = 2,     -- 2 → 6.70 kg
   INBOUND_EVENTS    = { "RE/FishCaught", "FishCaught", "FishingCompleted", "Caught", "Reward", "Fishing" },
+  USE_LARGE_IMAGE  = false, -- false = pakai thumbnail kecil di kanan; true = gambar besar di bawah embed
 
   -- Optional fallback maps (kalau ada ID unik yang bandel)
   ID_NAME_MAP       = {},
@@ -120,6 +121,27 @@ local function toAttrMap(inst)
   end
   return a
 end
+
+-- ==== Roblox Icon helpers ====
+local function extractAssetId(icon)
+  if not icon then return nil end
+  if type(icon) == "number" then return tostring(icon) end
+  if type(icon) == "string" then
+    local m = icon:match("rbxassetid://(%d+)")
+    if m then return m end
+    local n = icon:match("(%d+)$")
+    if n then return n end
+  end
+  return nil
+end
+
+local function iconToHttpUrl(icon)
+  local id = extractAssetId(icon)
+  if not id then return nil end
+  -- Thumbnail publik Roblox (redirect ke CDN, aman buat Discord)
+  return ("https://www.roblox.com/asset-thumbnail/image?assetId=%s&width=420&height=420&format=png"):format(id)
+end
+
 
 -- =========================
 -- Items ModuleScript Resolver (ReplicatedStorage.Items)
@@ -539,22 +561,41 @@ local function send(info, origin)
     if slot and slot.name then fishName = slot.name end
   end
 
+  -- Cari icon (prioritas: dari info → dari DB Items)
+  local iconSource = info.icon
+  if (not iconSource) and info.id then
+    buildFishDatabase()
+    local slot = _fishData[toIdStr(info.id)]
+    iconSource = slot and slot.icon
+  end
+  local thumbUrl = iconToHttpUrl(iconSource)
+
   local mut = formatMutations(info)
+
+    local embed = {
+    title = "🐟 New Catch: " .. fishName,
+    description = ("**Player:** %s\n**Origin:** %s"):format(LP.Name, origin or "unknown"),
+    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+    fields = {
+      { name="Weight",       value=toKg(info.weight),        inline=true },
+      { name="Chance",       value=fmtChanceOneIn(info),     inline=true },
+      { name="Rarity",       value=getTierName(info),        inline=true },
+      { name="Mutation(s)",  value=mut,                      inline=false },
+      { name="Fish ID",      value=info.id or "Unknown",     inline=true },
+    }
+  }
+
+  if thumbUrl then
+    if CFG.USE_LARGE_IMAGE then
+      embed.image = { url = thumbUrl }
+    else
+      embed.thumbnail = { url = thumbUrl }
+    end
+  end
 
   sendWebhook({
     username = ".devlogic notifier",
-    embeds = {{
-      title = "🐟 New Catch: " .. fishName,
-      description = ("**Player:** %s\n**Origin:** %s"):format(LP.Name, origin or "unknown"),
-      timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-      fields = {
-        { name="Weight",       value=toKg(info.weight),        inline=true },
-        { name="Chance",       value=fmtChanceOneIn(info),     inline=true }, -- <- dari Probability.Chance
-        { name="Rarity",       value=getTierName(info),        inline=true }, -- <- nama dari Tier
-        { name="Mutation(s)",  value=mut,                      inline=false },
-        { name="Fish ID",      value=info.id or "Unknown",     inline=true },
-      }
-    }}
+    embeds = { embed }
   })
 
   log("Sent webhook:", fishName, "Chance=", fmtChanceOneIn(info), "Tier=", getTierName(info))
