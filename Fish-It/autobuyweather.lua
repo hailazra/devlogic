@@ -48,18 +48,28 @@ local function initRemotes()
     end)
 end
 
-local function scanBuyables()
-    local map = {}
-    for _, m in ipairs(EventsFolder:GetChildren()) do
-        if m:IsA("ModuleScript") then
-            local ok, data = pcall(require, m)
-            if ok and data and data.WeatherMachine and type(data.Name) == "string" then
+local function _collectBuyables(root, map)
+    for _, ch in ipairs(root:GetChildren()) do
+        if ch:IsA("ModuleScript") then
+            local ok, data = pcall(require, ch)
+            if ok and type(data) == "table"
+               and data.WeatherMachine
+               and type(data.Name) == "string" then
                 map[data.Name] = data
             end
+        elseif ch:IsA("Folder") then
+            _collectBuyables(ch, map)
         end
     end
+end
+
+local function scanBuyables()
+    local map = {}
+    local events = ReplicatedStorage:FindFirstChild("Events")
+    if events then _collectBuyables(events, map) end
     return map
 end
+
 
 function AutoBuyWeather:GetBuyableWeathers()
     buyableMap = scanBuyables()
@@ -115,18 +125,26 @@ function AutoBuyWeather:Init(guiControls)
         warn("[AutoBuyWeather] remotes not ready")
         return false
     end
+
+    -- initial scan
     buyableMap = scanBuyables()
 
-    -- optional: isi dropdown multi bila guiControls.weatherDropdownMulti ada
+    -- jika GUI multi-dropdown disuplai, isi opsinya
     if guiControls and guiControls.weatherDropdownMulti then
         local dd = guiControls.weatherDropdownMulti
         local names = self:GetBuyableWeathers()
         if dd.Reload then dd:Reload(names)
         elseif dd.SetOptions then dd:SetOptions(names) end
-        -- no default selection here; biar user yang pilih multi
+
+        -- refresh sekali lagi setelah 1–2 detik (buat timing replicate)
+        task.delay(1.5, function()
+            local names2 = self:GetBuyableWeathers()
+            if dd.Reload then dd:Reload(names2)
+            elseif dd.SetOptions then dd:SetOptions(names2) end
+        end)
+
         if dd.OnChanged then
             dd:OnChanged(function(list)
-                -- beberapa UI kirim table of selections; kalau string, ubah ke {str}
                 if typeof(list) ~= "table" then list = {list} end
                 self:SetWeathers(list)
             end)
@@ -135,6 +153,7 @@ function AutoBuyWeather:Init(guiControls)
 
     return true
 end
+
 
 -- config: { weatherList = { "Shark Hunt", "..." }, interDelay = 0.75 }
 function AutoBuyWeather:Start(config)
