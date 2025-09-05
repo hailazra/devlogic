@@ -7,7 +7,7 @@
 -- CONFIG
 -- =========================
 local CFG = {
-  WEBHOOK_URL          = "https://discord.com/api/webhooks/XXXX/BBBB", -- <<< GANTI
+  WEBHOOK_URL          = "https://discordapp.com/api/webhooks/1369085852071759903/clJFD_k9D4QeH6zZpylPId2464XJBLyGDafz8uiTotf2tReSNeZXcyIiJDdUDhu1CCzI", -- <<< GANTI
   DEBUG                = true,
   WEIGHT_DECIMALS      = 2,
 
