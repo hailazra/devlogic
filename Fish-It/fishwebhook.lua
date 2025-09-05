@@ -510,7 +510,7 @@ local function sendEmbed(info, origin)
     
     local embed = {
         title = "🐟 New Catch: " .. fishName,
-        description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name ),
+        description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
         fields = {
             {name = "Weight", value = toKg(info.weight), inline = true},
