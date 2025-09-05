@@ -259,6 +259,18 @@ local eventtele_sec = TabMain:Section({
     TextSize = 17, -- Default Size
 })
 
+local eventtele_ddm = TabMain:Dropdown({
+    Title = "Select Event",
+    Desc = "If there is 2 event or more, it will prioritize selected Event."
+    Values = { "Category A", "Category B", "Category C" },
+    Value = { "Category A" },
+    Multi = true,
+    AllowNone = true,
+    Callback = function(option) 
+        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    end
+})
+
 local eventtele_tgl = TabMain:Toggle({
     Title = "Auto Event Teleport",
     Desc  = "Auto Teleport to Event when available",
@@ -390,7 +402,7 @@ local autogift_tgl = TabBackpack:Toggle({
 --- === Shop === --- 
 --- Item
 local shoprod_sec = TabShop:Section({ 
-    Title = "Rod & Item",
+    Title = "Rod",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
@@ -416,7 +428,7 @@ local shoprod_tgl = TabShop:Button({
 })
 
 local shopitem_sec = TabShop:Section({ 
-    Title = "Rod & Item",
+    Title = "Item",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
