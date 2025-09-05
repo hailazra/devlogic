@@ -9,7 +9,7 @@ local CFG = {
   CATCH_WINDOW_SEC  = 3,
   DEBUG             = true,
   WEIGHT_DECIMALS   = 2,
-  USE_LARGE_IMAGE   = true,  -- true: gambar besar di bawah embed; false: thumbnail kecil di kanan
+  USE_LARGE_IMAGE   = false,  -- true: gambar besar di bawah embed; false: thumbnail kecil di kanan
   THUMB_SIZE        = "420x420", -- size untuk thumbnails API (opsi umum: 150x150, 420x420, 720x720)
   INBOUND_EVENTS    = { "RE/FishCaught", "FishCaught", "FishingCompleted", "Caught", "Reward", "Fishing" },
 
