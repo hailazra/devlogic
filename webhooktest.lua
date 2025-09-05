@@ -1,13 +1,13 @@
 -- webhooktest.lua
--- FishCatchDetector v3.5.0
--- Fokus 3 sumber utama + smart rare-watch untuk Legendary/Mythic/Secret
+-- FishCatchDetector v3.5.1
+-- Fokus 3 sumber utama + smart rare-watch & anti-duplicate
 -- NO-HOOK, lazy Items require per-ID + cache, image via Roblox thumbnails API
 
 -- =========================
 -- CONFIG
 -- =========================
 local CFG = {
-  WEBHOOK_URL          = "https://discordapp.com/api/webhooks/1369085852071759903/clJFD_k9D4QeH6zZpylPId2464XJBLyGDafz8uiTotf2tReSNeZXcyIiJDdUDhu1CCzI", -- <<< GANTI
+  WEBHOOK_URL          = "https://discord.com/api/webhooks/XXXX/BBBB", -- <<< GANTI
   DEBUG                = true,
   WEIGHT_DECIMALS      = 2,
 
@@ -17,9 +17,12 @@ local CFG = {
   -- Rare watch (aktif setelah leaderstats trigger; tahan animasi rare)
   RARE_WINDOW_SEC      = 10.0,
 
+  -- Anti-duplicate TTL (detik). Dalam rentang ini signature yang sama akan di-skip.
+  DEDUP_TTL_SEC        = 12.0,
+
   -- Gambar
-  USE_LARGE_IMAGE      = false,
-  THUMB_SIZE           = "150x150",
+  USE_LARGE_IMAGE      = true,
+  THUMB_SIZE           = "420x420",
 
   -- Event utama + pola hook event rare tanpa scan berat
   INBOUND_EVENTS       = { "RE/FishCaught" }, -- baseline
@@ -50,7 +53,8 @@ local _conns           = {}
 local _lastInbound     = {}     -- queue event inbound {t, name, args}
 local _recentAdds      = {}     -- Backpack child timestamps [Instance]=ts
 local _rareWatchUntil  = 0      -- batas waktu rare-watch aktif
-local _debounce        = 0
+local _onCWBusy        = false  -- reentrancy guard untuk onCatchWindow
+local _debounceSend    = 0
 
 -- Items cache
 local _itemsRoot       = nil
@@ -62,12 +66,16 @@ local _scannedSet      = {}     -- [ModuleScript]=true
 -- Thumb cache
 local _thumbCache      = {}     -- [assetId] -> url
 
+-- Dedup cache
+local _sentCache       = {}     -- [signature] = lastTs
+
 -- =========================
 -- Utils
 -- =========================
 local function now() return os.clock() end
 local function log(...) if CFG.DEBUG then warn("[FCD]", ...) end end
 local function toIdStr(v) local n=tonumber(v); return n and tostring(n) or (v and tostring(v) or nil) end
+local function safeClear(t) if table and table.clear then table.clear(t) else for k in pairs(t) do t[k]=nil end end end
 
 -- ==== HTTP sender (robust) ====
 local function getRequestFn()
@@ -95,6 +103,15 @@ local function sendWebhook(payload)
   if code<200 or code>=300 then log("HTTP status:",code," body:",tostring(res.Body)) else log("Webhook OK (",code,")") end
 end
 
+local function httpGet(url)
+  local req=getRequestFn(); if not req then return nil,"no_request_fn" end
+  local ok,res=pcall(req,{Url=url,Method="GET",Headers={["User-Agent"]="Mozilla/5.0",["Accept"]="application/json,*/*"}})
+  if not ok then return nil,tostring(res) end
+  local code=tonumber(res.StatusCode or res.Status) or 0
+  if code<200 or code>=300 then return nil,"status:"..tostring(code) end
+  return res.Body or "", nil
+end
+
 local function toAttrMap(inst)
   local a={}; if not inst or not inst.GetAttributes then return a end
   for k,v in pairs(inst:GetAttributes()) do a[k]=v end
@@ -113,19 +130,6 @@ local function extractAssetId(icon)
     local n=icon:match("(%d+)$"); if n then return n end
   end
   return nil
-end
-
-local function getRequest()
-  return getRequestFn()
-end
-
-local function httpGet(url)
-  local req=getRequest(); if not req then return nil,"no_request_fn" end
-  local ok,res=pcall(req,{Url=url,Method="GET",Headers={["User-Agent"]="Mozilla/5.0",["Accept"]="application/json,*/*"}})
-  if not ok then return nil,tostring(res) end
-  local code=tonumber(res.StatusCode or res.Status) or 0
-  if code<200 or code>=300 then return nil,"status:"..tostring(code) end
-  return res.Body or "", nil
 end
 
 local function resolveIconUrl(icon)
@@ -295,9 +299,59 @@ local function formatMutations(mut)
 end
 
 -- =========================
+-- Anti-duplicate helpers
+-- =========================
+local function roundWeight(w)
+  local n=tonumber(w); if not n then return "?" end
+  local fmt="%0."..tostring(CFG.WEIGHT_DECIMALS).."f"
+  return string.format(fmt, n)
+end
+
+local function sigFromInfo(info)
+  -- Kunci utama: id + weight(rounded) + tier + chance(norm) + mutations json-ish
+  local id = info.id and tostring(info.id) or "?"
+  local wt = roundWeight(info.weight)
+  local tier = tostring(info.tier or "?")
+  local ch = tostring(info.chance or "?")
+  local mut = ""
+  if type(info.mutations)=="table" then
+    -- urutkan kunci biar konsisten
+    local keys={} ; for k in pairs(info.mutations) do table.insert(keys, tostring(k)) end
+    table.sort(keys)
+    local parts={}
+    for _,k in ipairs(keys) do table.insert(parts, k.."="..tostring(info.mutations[k])) end
+    mut = table.concat(parts, "&")
+  else
+    mut = tostring(info.mutation or "")
+  end
+  return table.concat({id, wt, tier, ch, mut}, "|")
+end
+
+local function shouldSend(sig)
+  -- purge old
+  local t=now()
+  for k,ts in pairs(_sentCache) do
+    if (t - ts) > CFG.DEDUP_TTL_SEC then _sentCache[k]=nil end
+  end
+  if _sentCache[sig] then return false end
+  _sentCache[sig]=t
+  return true
+end
+
+-- =========================
 -- Sending
 -- =========================
 local function sendEmbed(info, origin)
+  -- soft debounce untuk spam burst yang beda signature
+  if now() - _debounceSend < 0.15 then return end
+  _debounceSend = now()
+
+  local sig = sigFromInfo(info)
+  if not shouldSend(sig) then
+    log("Dedup suppress for sig:", sig)
+    return
+  end
+
   local fishName=info.name or "Unknown Fish"
   if fishName=="Unknown Fish" and info.id and _metaById[toIdStr(info.id)] and _metaById[toIdStr(info.id)].name then
     fishName=_metaById[toIdStr(info.id)].name
@@ -325,12 +379,21 @@ local function sendEmbed(info, origin)
     if CFG.USE_LARGE_IMAGE then embed.image={url=imageUrl} else embed.thumbnail={url=imageUrl} end
   end
   sendWebhook({ username=".devlogic notifier", embeds={embed} })
+
+  -- Close session: bersihkan antrian untuk cegah resend dari callback lain yang telat
+  safeClear(_lastInbound)
+  safeClear(_recentAdds)
+  _rareWatchUntil = 0
 end
 
 -- =========================
 -- Core correlation
 -- =========================
 local function onCatchWindow()
+  if _onCWBusy then return end
+  _onCWBusy = true
+  local function finally() _onCWBusy = false end
+
   -- 1) coba event terbaru di window cepat
   for i=#_lastInbound,1,-1 do
     local hit=_lastInbound[i]
@@ -338,7 +401,7 @@ local function onCatchWindow()
       local info=decode_RE_FishCaught(hit.args)
       if info and (info.id or info.name) then
         sendEmbed(info, "OnClientEvent:"..hit.name)
-        return
+        finally(); return
       end
     end
   end
@@ -352,13 +415,13 @@ local function onCatchWindow()
         local info=decode_RE_FishCaught(hit.args)
         if info and (info.id or info.name) then
           sendEmbed(info, "OnClientEvent(RARE):"..hit.name)
-          return
+          finally(); return
         end
       else
         break
       end
     end
-    -- 2b) korelasikan dengan Backpack add dalam rare window (ringan, tanpa scan besar)
+    -- 2b) korelasikan dengan Backpack add dalam rare window (ringan)
     for inst, ts in pairs(_recentAdds) do
       if inst.Parent==Backpack and now()-ts <= CFG.RARE_WINDOW_SEC then
         local a=toAttrMap(inst)
@@ -369,7 +432,7 @@ local function onCatchWindow()
             id=id, name=meta.name, tier=meta.tier, chance=meta.chance, icon=meta.icon,
             weight=a.Weight or a.Mass, mutations=a.Mutations or a.Mutation
           }, "Backpack(RARE):"..inst.Name)
-          return
+          finally(); return
         end
       end
     end
@@ -377,7 +440,6 @@ local function onCatchWindow()
 
   if CFG.DEBUG then
     log("No info in window; skipped")
-    -- Bantuan diagnosis: tampilkan nama2 event yang masuk 10s terakhir
     local names={}
     local cutoff=now()-10
     for i=#_lastInbound,1,-1 do
@@ -388,6 +450,8 @@ local function onCatchWindow()
     local list={} for k,v in pairs(names) do table.insert(list, k.."("..v..")") end
     if #list>0 then log("Recent inbound events seen:", table.concat(list, ", ")) end
   end
+
+  finally()
 end
 
 -- =========================
@@ -455,13 +519,13 @@ function M.Start(opts)
   connectInbound()
   connectLeaderstatsTrigger()
   connectBackpackLight()
-  log("FCD v3.5.0 started. DEBUG=", CFG.DEBUG)
+  log("FCD v3.5.1 started. DEBUG=", CFG.DEBUG)
 end
 
 function M.Kill()
   for _,c in ipairs(_conns) do pcall(function() c:Disconnect() end) end
   for k in pairs(_conns) do _conns[k]=nil end
-  log("FCD v3.5.0 stopped.")
+  log("FCD v3.5.1 stopped.")
 end
 
 function M.SetConfig(patch) for k,v in pairs(patch or {}) do CFG[k]=v end end
