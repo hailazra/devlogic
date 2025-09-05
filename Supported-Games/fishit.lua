@@ -459,51 +459,41 @@ local shopweather_sec = TabShop:Section({
     TextSize = 17, -- Default Size
 })
 
-local weatherFeature = nil
-local selectedList   = {}   -- table of string (maks 3)
+local weatherFeature          = nil
+local selectedWeatherSet      = {}  -- pakai set seperti pola webhook
 
--- helper: normalize & clamp ke 3
-local function normalizeSelected(val)
-    local out, seen = {}, {}
-    if typeof(val) ~= "table" then val = { val } end
-    for _, name in ipairs(val) do
-        if type(name) == "string" and name ~= "" and not seen[name] then
-            table.insert(out, name)
-            seen[name] = true
-            if #out >= 3 then break end
-        end
-    end
-    return out
-end
-
--- 3) Multi-dropdown (kosong dulu; akan diisi setelah modul diload)
+-- Multi dropdown (Values diisi setelah modul diload)
 local shopweather_ddm = TabShop:Dropdown({
     Title     = "Select Weather (max 3)",
-    Values    = {},           -- diisi setelah modul load
-    Value     = {},
+    Desc      = "Pilih hingga 3 cuaca untuk auto-buy",
+    Values    = {},                 -- diisi setelah load
+    Value     = {},                 -- default kosong
     Multi     = true,
     AllowNone = true,
-    Callback  = function(val)
-        selectedList = normalizeSelected(val)
+    Callback  = function(options)   -- <== array of strings (sesuai pola webhook)
+        -- rebuild set
+        selectedWeatherSet = {}
+        for _, opt in ipairs(options) do
+            if type(opt) == "string" and opt ~= "" then
+                selectedWeatherSet[opt] = true
+            end
+        end
         if weatherFeature and weatherFeature.SetWeathers then
-            weatherFeature:SetWeathers(selectedList)
+            weatherFeature:SetWeathers(selectedWeatherSet) -- modul terima set/array
         end
     end
 })
 
--- 4) Toggle utama
 local shopweather_tgl = TabShop:Toggle({
     Title   = "Auto Buy Weather",
     Default = false,
     Callback = function(state)
         if state then
-            -- lazy-load modul fitur saat toggle ON
             if not weatherFeature then
                 weatherFeature = FeatureManager:LoadFeature("AutoBuyWeather", {
-                    weatherDropdownMulti = shopweather_ddm, -- modul akan coba isi & refresh opsinya
+                    weatherDropdownMulti = shopweather_ddm,
                     toggle               = shopweather_tgl,
                 })
-                -- isi opsi dropdown dari modul (inisiatif GUI; Init modul juga sudah coba isi)
                 if weatherFeature and weatherFeature.GetBuyableWeathers then
                     local names = weatherFeature:GetBuyableWeathers()
                     if shopweather_ddm.Reload then
@@ -511,7 +501,6 @@ local shopweather_tgl = TabShop:Toggle({
                     elseif shopweather_ddm.SetOptions then
                         shopweather_ddm:SetOptions(names)
                     end
-                    -- refresh sekali lagi (timing replicasi)
                     task.delay(1.5, function()
                         if weatherFeature and weatherFeature.GetBuyableWeathers then
                             local names2 = weatherFeature:GetBuyableWeathers()
@@ -525,26 +514,23 @@ local shopweather_tgl = TabShop:Toggle({
                 end
             end
 
-            -- pastikan ada pilihan
-            if #selectedList == 0 then
+            if next(selectedWeatherSet) == nil then
                 WindUI:Notify({ Title="Info", Content="Pilih minimal 1 weather dulu.", Icon="info", Duration=3 })
                 shopweather_tgl:Set(false)
                 return
             end
 
-            -- start
             if weatherFeature and weatherFeature.Start then
                 weatherFeature:Start({
-                    weatherList = selectedList   -- multi list; modul akan round-robin & anti-spam
+                    weatherList = selectedWeatherSet, -- boleh set atau array
+                    -- interDelay default 0.75s di modul; ga perlu input GUI
                 })
             else
                 shopweather_tgl:Set(false)
                 WindUI:Notify({ Title="Failed", Content="Could not start AutoBuyWeather", Icon="x", Duration=3 })
             end
         else
-            if weatherFeature and weatherFeature.Stop then
-                weatherFeature:Stop()
-            end
+            if weatherFeature and weatherFeature.Stop then weatherFeature:Stop() end
         end
     end
 })
