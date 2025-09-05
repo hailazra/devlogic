@@ -513,6 +513,7 @@ local function sendEmbed(info, origin)
         description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
         color = 0x87CEEB,
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+        footer = { text = ".devlogic Fish Notifier" },
         fields = {
             {name = "Weight", value = toKg(info.weight), inline = true},
             {name = "Chance", value = fmtChanceOneInFromNumber(info.chance), inline = true},
