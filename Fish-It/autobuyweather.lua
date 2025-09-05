@@ -1,35 +1,43 @@
 -- ===========================
 -- AUTO BUY WEATHER FEATURE
 -- File: autobuyweather.lua
+-- ===========================
+-- AUTO BUY WEATHER (multi-select)
 -- Lifecycle: :Init(guiControls?), :Start(config?), :Stop(), :Cleanup()
--- Feature-specific setter: :SetWeather(weatherName)
--- Optional helper: :GetBuyableWeathers() -> {names}
+-- Setters  : :SetWeathers({ "Shark Hunt", ... }), :SetInterPurchaseDelay(number)
+-- Helpers  : :GetBuyableWeathers() -> {names}
 -- ===========================
 
 local AutoBuyWeather = {}
 AutoBuyWeather.__index = AutoBuyWeather
 
--- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
-local EventsFolder      = ReplicatedStorage:WaitForChild("Events")
 
--- Network (bind saat Init)
+local EventsFolder      = ReplicatedStorage:WaitForChild("Events")
 local NetPath, PurchaseWeatherRF
 
 -- State
-local isRunning        = false
-local hbConn           = nil
-local remotesReady     = false
-local selectedWeather  = nil
-local activeWeather    = {}    -- [name] = true while presumed active
-local buyableMap       = nil   -- [name] = data
+local isRunning            = false
+local conn                 = nil
+local remotesReady         = false
+
+local buyableMap           = nil             -- [name] = moduleData
+local selectedWeathers     = {}              -- array of names (max 3)
+local nextIdx              = 1               -- round-robin pointer
+
+-- anti-spam per weather (use expiry timestamp = now + (QueueTime+Duration))
+local cooldownUntil        = {}              -- [name] = unixTime
+
+-- inter-purchase guard antar InvokeServer (global)
+local interPurchaseDelay   = 0.75            -- seconds, configurable
+local lastGlobalPurchaseAt = 0
 
 -- pacing
-local WAIT_BETWEEN = 0.15
-local _lastTick    = 0
+local TICK_STEP            = 0.15
+local _lastTick            = 0
 
--- ===== helpers =====
+-- ========= helpers =========
 local function initRemotes()
     return pcall(function()
         NetPath = ReplicatedStorage:WaitForChild("Packages", 5)
@@ -62,7 +70,7 @@ function AutoBuyWeather:GetBuyableWeathers()
 end
 
 local function purchaseOnce(name)
-    if not PurchaseWeatherRF or not name then return false end
+    if not PurchaseWeatherRF then return false end
     local ok, err = pcall(function()
         return PurchaseWeatherRF:InvokeServer(name)
     end)
@@ -72,7 +80,34 @@ local function purchaseOnce(name)
     return ok
 end
 
--- ===== lifecycle =====
+local function nowSec()
+    return tick()
+end
+
+-- Pick next eligible weather (round-robin) that is buyable & off cooldown
+local function pickNextWeather()
+    if #selectedWeathers == 0 then return nil end
+    local start = nextIdx
+    for _ = 1, #selectedWeathers do
+        local name = selectedWeathers[nextIdx]
+        nextIdx = (nextIdx % #selectedWeathers) + 1
+
+        if not buyableMap or not buyableMap[name] then
+            buyableMap = scanBuyables()
+        end
+        local data = buyableMap and buyableMap[name]
+        if data then
+            local tnow = nowSec()
+            if not cooldownUntil[name] or tnow >= cooldownUntil[name] then
+                return name, data
+            end
+        end
+        -- continue checking others
+    end
+    return nil
+end
+
+-- ========= lifecycle =========
 function AutoBuyWeather:Init(guiControls)
     local ok = initRemotes()
     remotesReady = ok and true or false
@@ -80,30 +115,28 @@ function AutoBuyWeather:Init(guiControls)
         warn("[AutoBuyWeather] remotes not ready")
         return false
     end
-
     buyableMap = scanBuyables()
 
-    -- optional wiring langsung ke dropdown kalau diberikan oleh GUI:
-    if guiControls and guiControls.weatherDropdown then
-        local dd = guiControls.weatherDropdown
+    -- optional: isi dropdown multi bila guiControls.weatherDropdownMulti ada
+    if guiControls and guiControls.weatherDropdownMulti then
+        local dd = guiControls.weatherDropdownMulti
         local names = self:GetBuyableWeathers()
-        if dd.Reload then dd:Reload(names) elseif dd.SetOptions then dd:SetOptions(names) end
-        if not selectedWeather and #names > 0 then
-            selectedWeather = names[1]
-            if dd.Set then dd:Set(selectedWeather) end
-        end
+        if dd.Reload then dd:Reload(names)
+        elseif dd.SetOptions then dd:SetOptions(names) end
+        -- no default selection here; biar user yang pilih multi
         if dd.OnChanged then
-            dd:OnChanged(function(v) self:SetWeather(v) end)
-        elseif dd.Callback then
-            -- beberapa lib pakai Callback langsung
-            -- biarkan GUI utama yang memanggil SetWeather dari callback-nya
+            dd:OnChanged(function(list)
+                -- beberapa UI kirim table of selections; kalau string, ubah ke {str}
+                if typeof(list) ~= "table" then list = {list} end
+                self:SetWeathers(list)
+            end)
         end
     end
 
     return true
 end
 
--- config: { weatherName = "Shark Hunt" }
+-- config: { weatherList = { "Shark Hunt", "..." }, interDelay = 0.75 }
 function AutoBuyWeather:Start(config)
     if isRunning then return end
     if not remotesReady then
@@ -111,43 +144,38 @@ function AutoBuyWeather:Start(config)
         return
     end
 
-    if config and type(config.weatherName) == "string" then
-        self:SetWeather(config.weatherName)
+    if config then
+        if type(config.interDelay) == "number" then self:SetInterPurchaseDelay(config.interDelay) end
+        if type(config.weatherList) == "table" then self:SetWeathers(config.weatherList)
+        elseif type(config.weatherList) == "string" then self:SetWeathers({config.weatherList}) end
     end
 
-    -- fallback pilih pertama jika belum ada
-    if not selectedWeather then
-        local names = self:GetBuyableWeathers()
-        selectedWeather = names[1]
-    end
-    if not selectedWeather then
-        warn("[AutoBuyWeather] No selectable weather")
+    if #selectedWeathers == 0 then
+        warn("[AutoBuyWeather] No weather selected")
         return
     end
 
     isRunning = true
-    hbConn = RunService.Heartbeat:Connect(function()
+    conn = RunService.Heartbeat:Connect(function()
         if not isRunning then return end
-        local now = tick()
-        if now - _lastTick < WAIT_BETWEEN then return end
-        _lastTick = now
+        local t = nowSec()
+        if t - _lastTick < TICK_STEP then return end
+        _lastTick = t
 
-        -- pastikan masih buyable
-        if not buyableMap or not buyableMap[selectedWeather] then
-            buyableMap = scanBuyables()
-            if not buyableMap[selectedWeather] then return end
-        end
+        -- respect global inter-purchase delay
+        if t - lastGlobalPurchaseAt < interPurchaseDelay then return end
 
-        if activeWeather[selectedWeather] then return end
+        local name, data = pickNextWeather()
+        if not name or not data then return end
 
-        local data = buyableMap[selectedWeather]
-        if purchaseOnce(selectedWeather) then
+        if purchaseOnce(name) then
+            lastGlobalPurchaseAt = t
             local total = (data.QueueTime or 0) + (data.Duration or 0)
             if total > 0 then
-                activeWeather[selectedWeather] = true
-                task.delay(total, function()
-                    activeWeather[selectedWeather] = nil
-                end)
+                cooldownUntil[name] = t + total
+            else
+                -- minimal cooldown untuk jaga-jaga
+                cooldownUntil[name] = t + 2
             end
         end
     end)
@@ -156,27 +184,42 @@ end
 function AutoBuyWeather:Stop()
     if not isRunning then return end
     isRunning = false
-    if hbConn then hbConn:Disconnect() hbConn = nil end
+    if conn then conn:Disconnect() conn = nil end
 end
 
 function AutoBuyWeather:Cleanup()
     self:Stop()
-    remotesReady  = false
-    buyableMap    = nil
-    activeWeather = {}
+    buyableMap           = nil
+    cooldownUntil        = {}
+    selectedWeathers     = {}
+    nextIdx              = 1
+    lastGlobalPurchaseAt = 0
 end
 
--- ===== feature-specific setter =====
-function AutoBuyWeather:SetWeather(name)
-    if type(name) ~= "string" or name == "" then return false end
-    if not buyableMap or not buyableMap[name] then
-        buyableMap = scanBuyables()
+-- ========= setters =========
+-- list: table of strings (akan di-unique + clamp 3 + filter only buyable)
+function AutoBuyWeather:SetWeathers(list)
+    if typeof(list) ~= "table" then return false end
+    -- refresh buyable cache
+    if not buyableMap then buyableMap = scanBuyables() end
+
+    local seen, out = {}, {}
+    for _, name in ipairs(list) do
+        if type(name) == "string" and name ~= "" and buyableMap[name] and not seen[name] then
+            table.insert(out, name)
+            seen[name] = true
+            if #out >= 3 then break end
+        end
     end
-    if not buyableMap[name] then
-        warn("[AutoBuyWeather] Weather not buyable/not found: " .. name)
-        return false
-    end
-    selectedWeather = name
+    selectedWeathers = out
+    nextIdx = 1
+    return #selectedWeathers > 0
+end
+
+function AutoBuyWeather:SetInterPurchaseDelay(sec)
+    if type(sec) ~= "number" then return false end
+    -- clamp biar aman (hindari flood maupun terlalu lama)
+    interPurchaseDelay = math.clamp(sec, 0.2, 5)
     return true
 end
 
