@@ -1,20 +1,21 @@
 -- webhooktest.lua
--- FishCatchDetector v3.2.0 (NO-HOOK, Items ModuleScript aware, Image thumbnail)
+-- FishCatchDetector v3.3.0 (NO-HOOK, Items ModuleScript aware, Image via Roblox Thumbnails CDN)
 
 -- =========================
 -- CONFIG
 -- =========================
 local CFG = {
-  WEBHOOK_URL       = "https://discordapp.com/api/webhooks/1369085852071759903/clJFD_k9D4QeH6zZpylPId2464XJBLyGDafz8uiTotf2tReSNeZXcyIiJDdUDhu1CCzI", -- <<< GANTI
+  WEBHOOK_URL       = "https://discord.com/api/webhooks/XXXX/BBBB", -- <<< GANTI
   CATCH_WINDOW_SEC  = 3,
   DEBUG             = true,
   WEIGHT_DECIMALS   = 2,
-  USE_LARGE_IMAGE   = true, -- false: thumbnail kecil di kanan; true: gambar besar di bawah embed
+  USE_LARGE_IMAGE   = true,  -- true: gambar besar di bawah embed; false: thumbnail kecil di kanan
+  THUMB_SIZE        = "420x420", -- size untuk thumbnails API (opsi umum: 150x150, 420x420, 720x720)
   INBOUND_EVENTS    = { "RE/FishCaught", "FishCaught", "FishingCompleted", "Caught", "Reward", "Fishing" },
 
-  -- Optional fallback maps (kalau ada ID unik yang bandel)
+  -- Optional fallback maps
   ID_NAME_MAP       = {},
-  ID_RARITY_MAP     = {},    -- pakai jika ingin paksa nama rarity utk ID tertentu
+  ID_RARITY_MAP     = {},
 }
 
 -- Tier → Nama Rarity
@@ -46,10 +47,11 @@ local M = getgenv().FishCatchDetector
 local _conns           = {}
 local _lastInbound     = {}   -- { {t, name, args=table.pack(...)} , ...}
 local _recentAdds      = {}   -- [Instance] = timestamp
-local _fishData        = nil  -- lazy-built: [idStr] = { name, chance, tier, rarityTier, rarityName, icon, ... }
+local _fishData        = nil  -- [idStr] = { name, chance, tier, icon, ... }
 local _itemsRoot       = nil
 local _indexBuilt      = false
 local _moduleById      = {}   -- [idStr] = ModuleScript
+local _thumbCache      = {}   -- [assetId] = resolved image URL (rbxcdn/roblox)
 local _debounce        = 0
 
 -- =========================
@@ -81,7 +83,8 @@ local function sendWebhook(payload)
   local body = HttpService:JSONEncode(payload)
   local headers = {
     ["Content-Type"] = "application/json",
-    ["User-Agent"]   = "Mozilla/5.0"
+    ["User-Agent"]   = "Mozilla/5.0",
+    ["Accept"]       = "*/*",
   }
   local ok, res = pcall(req, {
     Url = CFG.WEBHOOK_URL,
@@ -93,13 +96,27 @@ local function sendWebhook(payload)
     log("Webhook pcall error:", tostring(res))
     return
   end
-  local code = res.StatusCode or res.Status or res.StatusCodeLine
-  local ok2xx = (type(code)=="number" and code >= 200 and code < 300)
+  local code = tonumber(res.StatusCode or res.Status) or 0
+  local ok2xx = (code >= 200 and code < 300)
   if not ok2xx then
     log("Webhook HTTP status:", tostring(code), " Body:", tostring(res.Body))
   else
     log("Webhook terkirim (", tostring(code), ")")
   end
+end
+
+local function httpGet(url)
+  local req = getRequestFn()
+  if not req then return nil, "no_request_fn" end
+  local ok, res = pcall(req, {
+    Url = url,
+    Method = "GET",
+    Headers = { ["User-Agent"]="Mozilla/5.0", ["Accept"]="application/json,*/*" }
+  })
+  if not ok then return nil, tostring(res) end
+  local code = tonumber(res.StatusCode or res.Status) or 0
+  if code < 200 or code >= 300 then return nil, "status:"..tostring(code) end
+  return res.Body or "", nil
 end
 
 local function safeClear(t)
@@ -129,10 +146,34 @@ local function extractAssetId(icon)
   return nil
 end
 
-local function iconToHttpUrl(icon)
+-- Prefer direct CDN URL dari thumbnails API; fallback ke asset-thumbnail
+local function resolveIconUrl(icon)
   local id = extractAssetId(icon)
   if not id then return nil end
-  return ("https://www.roblox.com/asset-thumbnail/image?assetId=%s&width=420&height=420&format=png"):format(id)
+  if _thumbCache[id] then return _thumbCache[id] end
+
+  -- 1) Thumbnails API (JSON → rbxcdn direct URL)
+  local size = CFG.THUMB_SIZE or "420x420"
+  local api = ("https://thumbnails.roblox.com/v1/assets?assetIds=%s&size=%s&format=Png&isCircular=false"):format(id, size)
+  local body, err = httpGet(api)
+  if body then
+    local ok, data = pcall(function() return HttpService:JSONDecode(body) end)
+    if ok and data and data.data and data.data[1] then
+      local d = data.data[1]
+      if d.state == "Completed" and d.imageUrl and #d.imageUrl > 0 then
+        _thumbCache[id] = d.imageUrl
+        log("Icon via thumbnails API:", _thumbCache[id])
+        return _thumbCache[id]
+      end
+    end
+  else
+    log("Thumbnails API fail:", err or "unknown")
+  end
+
+  -- 2) Fallback: asset-thumbnail (Discord akan follow redirect)
+  _thumbCache[id] = ("https://www.roblox.com/asset-thumbnail/image?assetId=%s&width=420&height=420&format=png"):format(id)
+  log("Icon via asset-thumbnail fallback:", _thumbCache[id])
+  return _thumbCache[id]
 end
 
 -- =========================
@@ -168,7 +209,6 @@ end
 local function safeRequire(ms)
   local ok, data = pcall(require, ms)
   if not ok or type(data) ~= "table" then return nil end
-  -- Format contoh:
   -- return {
   --   Data = { Id=65; Type="Fishes"; Name="Strawberry Dotty"; Tier=1; Icon="rbxassetid://..."; ... };
   --   Probability = { Chance = 0.05 };
@@ -183,7 +223,7 @@ local function safeRequire(ms)
     tier        = D.Tier,
     rarityTier  = D.Tier,
     rarityName  = D.RarityName,
-    chance      = chance,             -- bisa 0.05 atau 5
+    chance      = chance,             -- 0.05 atau 5
     icon        = D.Icon,
     desc        = D.Description,
     _module     = ms
@@ -304,7 +344,7 @@ local function buildFishDatabase()
   -- 2) Seed dari Items ModuleScript (nama numerik)
   buildLightIndex()
   for idStr, ms in pairs(_moduleById) do
-    if not _fishData[idStr] or not _fishData[idStr].name or not _fishData[idStr].chance then
+    if not _fishData[idStr] or not _fishData[idStr].name or not _fishData[idStr].chance or not _fishData[idStr].icon then
       local meta = safeRequire(ms)
       if meta and meta.id == idStr then
         _fishData[idStr] = _fishData[idStr] or {}
@@ -546,14 +586,15 @@ local function send(info, origin)
   end
   local mut = formatMutations(info)
 
-  -- Cari icon (prioritas: dari info → DB Items)
+  -- Icon → URL gambar
   local iconSource = info.icon
   if (not iconSource) and info.id then
     buildFishDatabase()
     local slot = _fishData[toIdStr(info.id)]
     iconSource = slot and slot.icon
   end
-  local thumbUrl = iconToHttpUrl(iconSource)
+  local imageUrl = iconSource and resolveIconUrl(iconSource) or nil
+  if CFG.DEBUG then log("Resolved image URL:", tostring(imageUrl)) end
 
   local embed = {
     title = "🐟 New Catch: " .. fishName,
@@ -567,9 +608,9 @@ local function send(info, origin)
       { name="Fish ID",      value=info.id or "Unknown",     inline=true },
     }
   }
-  if thumbUrl then
-    if CFG.USE_LARGE_IMAGE then embed.image = { url = thumbUrl }
-    else embed.thumbnail = { url = thumbUrl } end
+  if imageUrl then
+    if CFG.USE_LARGE_IMAGE then embed.image = { url = imageUrl }
+    else embed.thumbnail = { url = imageUrl } end
   end
 
   sendWebhook({ username = ".devlogic notifier", embeds = { embed } })
@@ -671,13 +712,13 @@ function M.Start(opts)
     log("Fish database initialized.")
   end)
   connectSignals()
-  log("FCD v3.2.0 started. DEBUG=", CFG.DEBUG)
+  log("FCD v3.3.0 started. DEBUG=", CFG.DEBUG)
 end
 
 function M.Kill()
   for _,c in ipairs(_conns) do pcall(function() c:Disconnect() end) end
   safeClear(_conns); safeClear(_lastInbound); safeClear(_recentAdds)
-  log("FCD v3.2.0 stopped.")
+  log("FCD v3.3.0 stopped.")
 end
 
 function M.SetConfig(patch) for k,v in pairs(patch or {}) do CFG[k] = v end end
@@ -699,7 +740,7 @@ function M.InspectGame()
   for _ in pairs(_fishData) do total += 1 end
   for id,data in pairs(_fishData) do
     if shown < 10 then
-      log(("  %s => %s (tier=%s, chance=%s)"):format(id, data.name or "-", tostring(data.rarityTier or data.tier or "?"), tostring(data.chance or "?")))
+      log(("  %s => %s (tier=%s, chance=%s, icon=%s)"):format(id, data.name or "-", tostring(data.rarityTier or data.tier or "?"), tostring(data.chance or "?"), tostring(data.icon or "-")))
       shown += 1
     end
   end
