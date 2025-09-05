@@ -462,11 +462,21 @@ local shopweather_sec = TabShop:Section({
 local weatherFeature          = nil
 local selectedWeatherSet      = {}  -- pakai set seperti pola webhook
 
+local BUYABLE_WEATHER = {
+    "Shark Hunt", "Wind", "Snow", "Radiant", "Storm", "Cloudy" 
+}
+
+local BUYABLE_WEATHER_OPTIONS = {}
+for _, weather in ipairs(BUYABLE_WEATHER) do
+    table.insert(BUYABLE_WEATHER_OPTIONS, weather)
+end
+
+
 -- Multi dropdown (Values diisi setelah modul diload)
 local shopweather_ddm = TabShop:Dropdown({
     Title     = "Select Weather (max 3)",
     Desc      = "Pilih hingga 3 cuaca untuk auto-buy",
-    Values    = {},                 -- diisi setelah load
+    Values    = BUYABLE_WEATHER_OPTIONS,                 -- diisi setelah load
     Value     = {},                 -- default kosong
     Multi     = true,
     AllowNone = true,
