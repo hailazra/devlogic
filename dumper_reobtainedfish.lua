@@ -43,7 +43,7 @@ end
 function M.decode_OBNFN(packed, metaLookup)
   -- Gabungkan semua argumen table ke satu list supaya mudah discan
   local bags = {}
-  for i = 1, packed.n or #packed do
+  for i = 1, packed or #packed do
     if isTable(packed[i]) then table.insert(bags, packed[i]) end
   end
 
