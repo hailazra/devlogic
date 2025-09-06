@@ -1,11 +1,3 @@
---[[
-  RE/ObtainedNewFishNotification – Payload Dumper + Schema Inference (standalone)
-
-  Fitur:
-    - Hook OnClientEvent utk RemoteEvent bernama persis "RE/ObtainedNewFishNotification".
-    - Pretty dump payload (deep, aman).
-    - Kumpulin beberapa sample, bikin "schema/template" (union key + tipe + contoh).
-    - Export JSON dari sample terakhir (bersih dari function/userdata).
 
 
 
