@@ -71,22 +71,26 @@ function AutoBuyBait:Init(gui)
 end
 
 function AutoBuyBait:Start(config)
-    if running then return end
-    running = true
-    
-    -- Parse config jika ada
-    if config then
-        if config.baitList then
-            self:SetSelectedBaits(config.baitList)
-        end
-        if config.interDelay then
-            INTER_PURCHASE_DELAY = math.max(0.1, config.interDelay)
+    if not running then
+        running = true
+        
+        -- Parse config jika ada
+        if config then
+            if config.baitList then
+                self:SetSelectedBaits(config.baitList)
+            end
+            if config.interDelay then
+                INTER_PURCHASE_DELAY = math.max(0.1, config.interDelay)
+            end
         end
     end
     
     -- Langsung lakukan pembelian (one-time) kemudian stop
+    print("[AutoBuyBait] Starting purchase process...")
     local success = self:PurchaseSelectedBaits()
-    self:Stop() -- Langsung stop setelah purchase
+    
+    -- Stop setelah purchase
+    self:Stop()
     return success
 end
 
