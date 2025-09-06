@@ -1121,14 +1121,16 @@ end
 if type(Window.OnDestroy) == "function" then
     Window:OnDestroy(function()
         print("[GUI] Window destroying - cleaning up")
+        
+        -- Cleanup semua fitur
         for _, feature in pairs(FeatureManager.LoadedFeatures) do
             if feature.Cleanup then
                 pcall(feature.Cleanup, feature)
             end
         end
         FeatureManager.LoadedFeatures = {}
-    end
-    -- Cleanup custom icon
+        
+        -- Cleanup custom icon
         if _G.DevLogicIconCleanup then
             pcall(_G.DevLogicIconCleanup)
             _G.DevLogicIconCleanup = nil
