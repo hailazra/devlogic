@@ -377,7 +377,7 @@ Window:Tag({
 -- === Topbar Changelog (simple) ===
 local CHANGELOG = table.concat({
     "[+] Auto Fishing",
-    "[+] Auto Teleport Island".
+    "[+] Auto Teleport Island",
     "[+] Auto Buy Weather",
     "[+] Auto Sell Fish",
     "[+] Webhook",
