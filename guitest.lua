@@ -270,7 +270,6 @@ if Window.Open then
         return result
     end
 end
-<<<<<<< HEAD
 
 -- Setup OnDestroy handler untuk cleanup icon
 if Window.OnDestroy and type(Window.OnDestroy) == "function" then
@@ -308,7 +307,6 @@ destructionMonitor = RunService.Heartbeat:Connect(function()
         end
     end
 end
-=======
 
 -- Setup OnDestroy handler untuk cleanup icon
 if Window.OnDestroy and type(Window.OnDestroy) == "function" then
@@ -346,4 +344,3 @@ destructionMonitor = RunService.Heartbeat:Connect(function()
         end
     end
 end)
->>>>>>> 02e572162a41b256cf98ccb1d0350922a48e89f4
