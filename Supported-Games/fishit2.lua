@@ -106,10 +106,22 @@ local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
--- Create custom icon
-local iconGui = Instance.new("ScreenGui")
+-- Root UI yang lebih tahan reset (prioritas: gethui/CoreGui; fallback ke PlayerGui)
+local function getUiRoot()
+    return (gethui and gethui()) or game:GetService("CoreGui") or PlayerGui
+end
+
+-- Reuse kalau sudah ada (hindari duplikasi saat re-exec)
+local iconGui = getUiRoot():FindFirstChild("DevLogicIconGui") or Instance.new("ScreenGui")
 iconGui.Name = "DevLogicIconGui"
-iconGui.Parent = PlayerGui
+iconGui.IgnoreGuiInset = true
+iconGui.ResetOnSpawn = false   -- <- kunci: jangan hilang saat respawn
+
+-- (Opsional) proteksi GUI (beberapa executor support)
+pcall(function() if syn and syn.protect_gui then syn.protect_gui(iconGui) end end)
+
+iconGui.Parent = getUiRoot()
+
 
 local iconButton = Instance.new("ImageButton")
 iconButton.Name = "DevLogicOpenButton"
