@@ -692,8 +692,7 @@ local buyBaitFeature          = nil
 local selectedBuyBait            = {}
 
 local BUYABLE_BAIT = {
-    "Topwater Bait", "Luck Bait", "Midnight Bait", "Nature Bait", "Chroma Bait", "Dark Matter Bait", "Corrupt Bait",
-    "Aether Bait" }
+    "Topwater Bait", "Luck Bait", "Midnight Bait", "Nature Bait", "Chroma Bait", "Dark Matter Bait", "Corrupt Bait", "Aether Bait" }
 
 local BUYABLE_BAIT_OPTIONS = {}
 for _, bait in ipairs(BUYABLE_BAIT) do
