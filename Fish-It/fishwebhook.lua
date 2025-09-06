@@ -623,15 +623,15 @@ local function sendEmbed(info, origin)
     end
 
     local function hide(v)
-        v = v == nil and "Unknown" or tostring(v)
-        v = v:gsub("||", "||")
-        return string.format("||", "||")
+    v = v == nil and "Unknown" or tostring(v)
+    v = v:gsub("||", "|​|") -- Add zero-width space to prevent breaking
+    return string.format("||%s||", v)
     end
 
     -- UPDATED: Enhanced embed with new data
     local embed = {
         title = (info.shiny and "✨ " or "🎣 ") .. "New Catch ",
-        description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "Unknown"),
+        description = string.format("**Player:** %s", hide(LocalPlayer.Name)),
         color = info.shiny and 0xFFD700 or 0x87CEEB, -- Gold for shiny, light blue for normal
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
         footer = { text = "Fish-It Notifier" },
