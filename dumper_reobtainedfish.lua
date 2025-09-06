@@ -7,20 +7,7 @@
     - Kumpulin beberapa sample, bikin "schema/template" (union key + tipe + contoh).
     - Export JSON dari sample terakhir (bersih dari function/userdata).
 
-  Quick use:
-    local dump = loadstring(--[[ paste file ini atau require ]])()
-    dump:Init({MAX_DEPTH=6, MAX_SAMPLES=200, SHOW_RAW_DUMP=true})
-    dump:Start()
-    -- pancing ikan / trigger notifikasi
-    -- perintah runtime:
-    --   dump:PrintSchema()
-    --   print(dump:ExportLastJSON())
-    --   dump:Stop()
 
-  Catatan:
-    - Default scan di ReplicatedStorage. Kalau dev mindahin remote ke tempat lain,
-      tambahin service di SCAN_ROOTS (mis. ReplicatedFirst, PlayerGui).
-]]
 
 local Dumper = {}
 Dumper.__index = Dumper
