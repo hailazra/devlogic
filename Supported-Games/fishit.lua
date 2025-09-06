@@ -40,7 +40,8 @@ local FEATURE_URLS = {
     AutoTeleportIsland = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua",
     FishWebhook        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/fishwebhook.lua",
     AutoBuyWeather     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyweather.lua",
-    AutoBuyBait        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuybait.lua"
+    AutoBuyBait        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuybait.lua",
+    AutoBuyRod         = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyrod.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -661,23 +662,163 @@ local shoprod_sec = TabShop:Section({
     TextSize = 17, -- Default Size
 })
 
+local autobuyrodFeature = nil
+local selectedRodsSet = {} -- State untuk menyimpan pilihan user
+
 local shoprod_ddm = TabShop:Dropdown({
     Title = "Select Rod",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = { "Category A" },
+    Values = {
+        "Luck Rod",
+        "Carbon Rod", 
+        "Grass Rod",
+        "Demascus Rod",
+        "Ice Rod",
+        "Lucky Rod",
+        "Midnight Rod",
+        "Steampunk Rod",
+        "Chrome Rod",
+        "Astral Rod",
+        "Ares Rod",
+        "Angler Rod"
+    },
+    Value = {}, -- Start with empty selection
     Multi = true,
     AllowNone = true,
-    Callback = function(option) 
-        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    Callback = function(options) 
+        -- Update state variable
+        selectedRodsSet = options or {}
+        
+        print("[AutoBuyRod] Selected rods:", game:GetService("HttpService"):JSONEncode(selectedRodsSet))
+        
+        -- Update feature jika sudah dimuat
+        if autobuyrodFeature and autobuyrodFeature.SetSelectedRodsByName then
+            autobuyrodFeature:SetSelectedRodsByName(selectedRodsSet)
+        end
     end
 })
 
-local shoprod_tgl = TabShop:Button({
+local shoprod_btn = TabShop:Button({
     Title = "Buy Rod",
-    Desc = "",
+    Desc = "Purchase selected rods (one-time buy)",
     Locked = false,
     Callback = function()
-        print("clicked")
+        print("[GUI] Buy Rod button clicked")
+        
+        -- Load feature pada first-time saja
+        if not autobuyrodFeature then
+            print("[GUI] Loading AutoBuyRod feature...")
+            autobuyrodFeature = FeatureManager:LoadFeature("AutoBuyRod", {
+                rodsDropdown = shoprod_ddm,
+                button = shoprod_btn
+            })
+            
+            -- Jika feature berhasil dimuat, refresh dropdown dengan data real
+            if autobuyrodFeature then
+                print("[GUI] AutoBuyRod feature loaded successfully")
+                
+                -- Spawn task untuk refresh dropdown setelah Init selesai
+                task.spawn(function()
+                    task.wait(0.5) -- Beri waktu untuk Init() selesai
+                    
+                    if autobuyrodFeature.GetAvailableRods then
+                        local availableRods = autobuyrodFeature:GetAvailableRods()
+                        local rodNames = {}
+                        
+                        for _, rod in ipairs(availableRods) do
+                            table.insert(rodNames, rod.name) -- Simpan nama asli untuk logic
+                        end
+                        
+                        -- Reload dropdown dengan data real dari game
+                        if shoprod_ddm.Reload then
+                            shoprod_ddm:Reload(rodNames)
+                            print("[AutoBuyRod] Dropdown refreshed with", #rodNames, "real rods")
+                        end
+                    end
+                end)
+            else
+                print("[GUI] Failed to load AutoBuyRod feature")
+                WindUI:Notify({ 
+                    Title = "Error", 
+                    Content = "Failed to load AutoBuyRod feature", 
+                    Icon = "x", 
+                    Duration = 3 
+                })
+                return
+            end
+        end
+        
+        -- Validasi: pastikan ada rod yang dipilih
+        if not selectedRodsSet or #selectedRodsSet == 0 then
+            WindUI:Notify({ 
+                Title = "Info", 
+                Content = "Select at least 1 Rod first", 
+                Icon = "info", 
+                Duration = 3 
+            })
+            return
+        end
+        
+        -- Validasi: feature harus sudah dimuat
+        if not autobuyrodFeature then
+            WindUI:Notify({ 
+                Title = "Error", 
+                Content = "AutoBuyRod feature not available", 
+                Icon = "x", 
+                Duration = 3 
+            })
+            return
+        end
+        
+        -- Execute purchase process
+        print("[GUI] Starting purchase for rods:", table.concat(selectedRodsSet, ", "))
+        
+        -- Set selected rods ke feature
+        if autobuyrodFeature.SetSelectedRodsByName then
+            local setSuccess = autobuyrodFeature:SetSelectedRodsByName(selectedRodsSet)
+            if not setSuccess then
+                WindUI:Notify({ 
+                    Title = "Error", 
+                    Content = "Failed to set selected rods", 
+                    Icon = "x", 
+                    Duration = 3 
+                })
+                return
+            end
+        end
+        
+        -- Start one-time purchase
+        if autobuyrodFeature.Start then
+            local purchaseSuccess = autobuyrodFeature:Start({
+                rodList = selectedRodsSet,
+                interDelay = 0.5 -- Anti-spam delay
+            })
+            
+            -- Feedback ke user
+            if purchaseSuccess then
+                WindUI:Notify({ 
+                    Title = "Success", 
+                    Content = "Rod purchase completed!", 
+                    Icon = "check", 
+                    Duration = 3 
+                })
+                print("[GUI] Purchase completed successfully")
+            else
+                WindUI:Notify({ 
+                    Title = "Failed", 
+                    Content = "Could not complete rod purchase", 
+                    Icon = "x", 
+                    Duration = 3 
+                })
+                print("[GUI] Purchase failed")
+            end
+        else
+            WindUI:Notify({ 
+                Title = "Error", 
+                Content = "Start method not available", 
+                Icon = "x", 
+                Duration = 3 
+            })
+        end
     end
 })
 
