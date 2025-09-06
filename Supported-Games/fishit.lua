@@ -653,7 +653,7 @@ local autogift_tgl = TabBackpack:Toggle({
 })
 
 --- === Shop === --- 
---- Item
+--- Rod
 local shoprod_sec = TabShop:Section({ 
     Title = "Rod",
     TextXAlignment = "Left",
@@ -680,13 +680,42 @@ local shoprod_tgl = TabShop:Button({
     end
 })
 
-local shopitem_sec = TabShop:Section({ 
-    Title = "Item",
+--- Baits
+local shopbait_sec = TabShop:Section({ 
+    Title = "Baits",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
 
-local shopitem_ddm = TabShop:Dropdown({
+local shopbait_ddm = TabShop:Dropdown({
+    Title = "Select Bait",
+    Values = { "Category A", "Category B", "Category C" },
+    Value = { "Category A" },
+    Multi = true,
+    AllowNone = true,
+    Callback = function(option) 
+        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    end
+})
+
+
+local shopbait_btn = TabShop:Button({
+    Title = "Buy Bait",
+    Desc = "",
+    Locked = false,
+    Callback = function()
+        print("clicked")
+    end
+})
+
+--- Other Item
+local shopother_sec = TabShop:Section({ 
+    Title = "Others",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local shopothers_ddm = TabShop:Dropdown({
     Title = "Select Item",
     Values = { "Category A", "Category B", "Category C" },
     Value = { "Category A" },
@@ -697,18 +726,7 @@ local shopitem_ddm = TabShop:Dropdown({
     end
 })
 
-local shopitem_in = TabShop:Input({
-    Title = "Quantity",
-    Desc = "Item Quantity",
-    Value = "",
-    Placeholder = "Enter quantity",
-    Type = "Input", 
-    Callback = function(input) 
-        print("delay entered: " .. input)
-    end
-})
-
-local shopitem_btn = TabShop:Button({
+local shopother_btn = TabShop:Button({
     Title = "Buy Item",
     Desc = "",
     Locked = false,
