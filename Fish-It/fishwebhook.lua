@@ -638,9 +638,7 @@ local function sendEmbed(info, origin)
             { name = "⚖️ Weight",      value = box(toKg(info.weight)),                     inline = true  },
             { name = "🎲 Chance",       value = box(fmtChanceOneInFromNumber(info.chance)), inline = true  },
             { name = "💎 Rarity",       value = box(getTierName(info.tier)),                inline = true  },
-            { name = "🧬 Mutation(s)",  value = box(formatMutations(info.mutations or info.mutation)), inline = false },
             { name = "🎨 Variant",      value = box(formatVariant(info)),                   inline = false },
-            { name = "Fish ID",         value = box(info.id and tostring(info.id) or "Unknown"),       inline = true  },
         }
     }
 
