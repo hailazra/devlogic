@@ -689,68 +689,108 @@ local shopbait_sec = TabShop:Section({
 })
 
 local autobuybaitFeature = nil
-local selectedBaitsSet   = "Aether Bait"
+local selectedBaitsSet = {} -- Ubah dari string ke table
 
+-- Dropdown akan di-populate otomatis saat feature dimuat pertama kali
 local shopbait_ddm = TabShop:Dropdown({
     Title = "Select Bait",
     Values = {
-    "Topwater Bait",
-    "Luck Bait",
-    "Midnight Bait",
-    "Nature Bait",
-    "Chroma Bait",
-    "Dark Matter Bait",
-    "Corrupt Bait",
-    "Aether Bait" },
-    Value = selectedBaitsSet,
+        "Topwater Bait",
+        "Luck Bait", 
+        "Midnight Bait",
+        "Nature Bait",
+        "Chroma Bait",
+        "Dark Matter Bait",
+        "Corrupt Bait",
+        "Aether Bait" 
+    },
+    Value = {}, -- Default empty selection
     Multi = true,
     AllowNone = true,
-    Callback = function(option) 
-           selectedBaitsSet = option
-    -- rebuild set
+    Callback = function(options) 
+        selectedBaitsSet = options -- Langsung assign array
+        print("[AutoBuyBait] Selected baits:", game:GetService("HttpService"):JSONEncode(options))
+        
+        -- Update selection jika feature sudah dimuat
         if autobuybaitFeature and autobuybaitFeature.SetSelectedBaitsByName then
             autobuybaitFeature:SetSelectedBaitsByName(selectedBaitsSet)
         end
     end
 })
 
-
 local shopbait_btn = TabShop:Button({
     Title = "Buy Bait",
-    Desc = "",
+    Desc = "Purchase selected baits (one-time)",
     Locked = false,
     Callback = function()
-  -- load feature first time
+        -- Load feature pada first-time
         if not autobuybaitFeature then
             autobuybaitFeature = FeatureManager:LoadFeature("AutoBuyBait", {
                 dropdown = shopbait_ddm,
                 button   = shopbait_btn
             })
-            -- jika fitur berhasil dimuat, refresh pilihan nama dari modul
-            if autobuybaitFeature and autobuybaitFeature.RefreshCatalog then
-                autobuybaitFeature:RefreshCatalog()
-                local names = {}
-                for _, row in ipairs(autobuybaitFeature:GetCatalogRows()) do
-                    table.insert(names, row.Name)
-                end
-                if shopbait_ddm.Reload then
-                    shopbait_ddm:Reload(names)
-                elseif shopbait_ddm.SetOptions then
-                    shopbait_ddm:SetOptions(names)
-                end
+            
+            -- Jika berhasil dimuat, refresh dropdown dengan bait yang tersedia
+            if autobuybaitFeature then
+                task.spawn(function()
+                    -- Beri waktu untuk Init() selesai
+                    task.wait(0.5)
+                    
+                    local availableBaits = autobuybaitFeature:GetAvailableBaits()
+                    local baitNames = {}
+                    for _, bait in ipairs(availableBaits) do
+                        table.insert(baitNames, bait.name)
+                    end
+                    
+                    -- Reload dropdown dengan data real
+                    if shopbait_ddm.Reload then
+                        shopbait_ddm:Reload(baitNames)
+                    end
+                    
+                    print("[AutoBuyBait] Dropdown refreshed with", #baitNames, "baits")
+                end)
             end
         end
-        -- validasi set kosong
-        if next(selectedBaitsSet) == nil then
-            WindUI:Notify({ Title="Info", Content="Select at least 1 Bait", Icon="info", Duration=3 })
+        
+        -- Validasi selection
+        if not selectedBaitsSet or #selectedBaitsSet == 0 then
+            WindUI:Notify({ 
+                Title = "Info", 
+                Content = "Select at least 1 Bait", 
+                Icon = "info", 
+                Duration = 3 
+            })
             return
         end
-        -- jalankan pembelian sekali per bait
+        
+        -- Execute purchase
         if autobuybaitFeature then
             autobuybaitFeature:SetSelectedBaitsByName(selectedBaitsSet)
-            autobuybaitFeature:Start()  -- one-shot
+            
+            local success = autobuybaitFeature:Start() -- One-time purchase
+            
+            if success then
+                WindUI:Notify({ 
+                    Title = "Success", 
+                    Content = "Bait purchase completed", 
+                    Icon = "check", 
+                    Duration = 3 
+                })
+            else
+                WindUI:Notify({ 
+                    Title = "Failed", 
+                    Content = "Could not purchase baits", 
+                    Icon = "x", 
+                    Duration = 3 
+                })
+            end
         else
-            WindUI:Notify({ Title="Failed", Content="Could not start AutoBuyBait", Icon="x", Duration=3 })
+            WindUI:Notify({ 
+                Title = "Error", 
+                Content = "AutoBuyBait feature not loaded", 
+                Icon = "x", 
+                Duration = 3 
+            })
         end
     end
 })
