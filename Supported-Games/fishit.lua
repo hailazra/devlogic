@@ -689,7 +689,7 @@ local shopbait_sec = TabShop:Section({
 })
 
 local autobuybaitFeature = nil
-local selectedBaitsSet   = {}
+local selectedBaitsSet   = "Aether Bait"
 
 local shopbait_ddm = TabShop:Dropdown({
     Title = "Select Bait",
@@ -702,10 +702,11 @@ local shopbait_ddm = TabShop:Dropdown({
     "Dark Matter Bait",
     "Corrupt Bait",
     "Aether Bait" },
-    Value = {},
+    Value = selectedBaitsSet,
     Multi = true,
     AllowNone = true,
     Callback = function(option) 
+           selectedBaitsSet = option
     -- rebuild set
         if autobuybaitFeature and autobuybaitFeature.SetSelectedBaitsByName then
             autobuybaitFeature:SetSelectedBaitsByName(selectedBaitsSet)
