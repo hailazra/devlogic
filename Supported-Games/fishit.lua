@@ -421,8 +421,14 @@ local TabTeleport = Window:Tab({ Title = "Teleport", Icon = "map" })
 local TabMisc     = Window:Tab({ Title = "Misc",     Icon = "cog" })
 
 --- === Home === ---
+local DLsec = TabHome:Section({ 
+    Title = "Information",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
 local AboutUs = TabHome:Paragraph({
-    Title = ".devlogiv",
+    Title = ".devlogic",
     Desc = "If you found bugs or have suggestion, let us know.",
     Color = "White",
     ImageSize = 30,})
