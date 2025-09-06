@@ -376,7 +376,11 @@ Window:Tag({
 
 -- === Topbar Changelog (simple) ===
 local CHANGELOG = table.concat({
-    "[+] Auto Fishing (Still have bug)",
+    "[+] Auto Fishing",
+    "[+] Auto Teleport Island".
+    "[+] Auto Buy Weather",
+    "[+] Auto Sell Fish",
+    "[+] Webhook",
 }, "\n")
 local DISCORD = table.concat({
     "https://discord.gg/3AzvRJFT3M",
@@ -417,16 +421,10 @@ local TabTeleport = Window:Tab({ Title = "Teleport", Icon = "map" })
 local TabMisc     = Window:Tab({ Title = "Misc",     Icon = "cog" })
 
 --- === Home === ---
-local DLsec = TabHome:Section({ 
-    Title = ".devlogic",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
 local AboutUs = TabHome:Paragraph({
-    Title = "About Us",
-    Desc = "This script still under development, please report any bugs or issues in our discord server.",
-    Color = "Red",
+    Title = ".devlogiv",
+    Desc = "If you found bugs or have suggestion, let us know.",
+    Color = "White",
     ImageSize = 30,})
 
 local DiscordBtn = TabHome:Button({
