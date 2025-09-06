@@ -707,12 +707,6 @@ local shopbait_ddm = TabShop:Dropdown({
     AllowNone = true,
     Callback = function(option) 
     -- rebuild set
-        selectedBaitsSet = {}
-        for _, opt in ipairs(options) do
-            if type(opt) == "string" and opt ~= "" then
-                selectedBaitsSet[opt] = true
-            end
-        end
         if autobuybaitFeature and autobuybaitFeature.SetSelectedBaitsByName then
             autobuybaitFeature:SetSelectedBaitsByName(selectedBaitsSet)
         end
