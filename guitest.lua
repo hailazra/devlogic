@@ -272,75 +272,13 @@ if Window.Open then
 end
 
 -- Setup OnDestroy handler untuk cleanup icon
+-- Buat cleanup icon tersedia secara global untuk dipanggil dari GUI utama
+_G.DevLogicIconCleanup = cleanupIcon
+
+-- Setup OnDestroy handler jika tersedia (sebagai fallback)
 if Window.OnDestroy and type(Window.OnDestroy) == "function" then
     Window:OnDestroy(function()
-        print("[GUI] Window destroying - cleaning up custom icon")
-        cleanupIcon()
-    end)
-elseif Window.SetOnDestroy and type(Window.SetOnDestroy) == "function" then
-    Window:SetOnDestroy(function()
-        print("[GUI] Window destroying - cleaning up custom icon")
+        print("[GUI] Window OnDestroy called - cleaning up custom icon")
         cleanupIcon()
     end)
 end
-
--- Alternative: Monitor WindUI destruction dengan RunService
-local RunService = game:GetService("RunService")
-local destructionMonitor
-
-destructionMonitor = RunService.Heartbeat:Connect(function()
-    if windowDestroyed then
-        destructionMonitor:Disconnect()
-        return
-    end)
-    
-    -- Check jika WindUI sudah tidak ada
-    local windUIFrame = PlayerGui:FindFirstChild("WindUI")
-    if not windUIFrame then
-        -- Double check dengan delay kecil untuk memastikan
-        wait(0.1)
-        windUIFrame = PlayerGui:FindFirstChild("WindUI")
-        if not windUIFrame and not windowDestroyed then
-            print("[GUI] WindUI frame not found - assuming destroyed")
-            cleanupIcon()
-            destructionMonitor:Disconnect()
-        end
-    end
-end
-
--- Setup OnDestroy handler untuk cleanup icon
-if Window.OnDestroy and type(Window.OnDestroy) == "function" then
-    Window:OnDestroy(function()
-        print("[GUI] Window destroying - cleaning up custom icon")
-        cleanupIcon()
-    end)
-elseif Window.SetOnDestroy and type(Window.SetOnDestroy) == "function" then
-    Window:SetOnDestroy(function()
-        print("[GUI] Window destroying - cleaning up custom icon")
-        cleanupIcon()
-    end)
-end
-
--- Alternative: Monitor WindUI destruction dengan RunService
-local RunService = game:GetService("RunService")
-local destructionMonitor
-
-destructionMonitor = RunService.Heartbeat:Connect(function()
-    if windowDestroyed then
-        destructionMonitor:Disconnect()
-        return
-    end
-    
-    -- Check jika WindUI sudah tidak ada
-    local windUIFrame = PlayerGui:FindFirstChild("WindUI")
-    if not windUIFrame then
-        -- Double check dengan delay kecil untuk memastikan
-        wait(0.1)
-        windUIFrame = PlayerGui:FindFirstChild("WindUI")
-        if not windUIFrame and not windowDestroyed then
-            print("[GUI] WindUI frame not found - assuming destroyed")
-            cleanupIcon()
-            destructionMonitor:Disconnect()
-        end
-    end
-end)
