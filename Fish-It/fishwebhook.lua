@@ -489,9 +489,7 @@ local function formatVariant(info)
     if info.variantId and info.variantId ~= "" then
         table.insert(parts, "Variant: " .. tostring(info.variantId))
     end
-    if info.variantSeed then
-        table.insert(parts, "Seed: " .. tostring(info.variantSeed))
-    end
+    
     if info.shiny then
         table.insert(parts, "✨ SHINY")
     end
