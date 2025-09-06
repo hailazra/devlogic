@@ -618,17 +618,23 @@ local function sendEmbed(info, origin)
     -- Create "box" formatting for Discord embed (inline code)
     local function box(v)
         v = v == nil and "Unknown" or tostring(v)
-        v = v:gsub("`", "ˋ") -- Replace backticks to avoid breaking formatting
-        return string.format("`%s`", v)
+        v = v:gsub("```", "ˋ``") -- Replace backticks to avoid breaking formatting
+        return string.format("```%s```", v)
+    end
+
+    local function hide(v)
+        v = v == nil and "Unknown" or tostring(v)
+        v = v:gsub("||", "||")
+        return string.format("||", "||")
     end
 
     -- UPDATED: Enhanced embed with new data
     local embed = {
-        title = (info.shiny and "✨ SHINY ✨ " or "🎣 ") .. "New Catch: " .. fishName,
-        description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
+        title = (info.shiny and "✨ " or "🎣 ") .. "New Catch ",
+        description = hide(string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown")),
         color = info.shiny and 0xFFD700 or 0x87CEEB, -- Gold for shiny, light blue for normal
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-        footer = { text = ".devlogic Fish Notifier v2" },
+        footer = { text = "Fish-It Notifier" },
         fields = {
             { name = "Fish Name 🐟",   value = box(fishName),                              inline = false },
             { name = "⚖️ Weight",      value = box(toKg(info.weight)),                     inline = true  },
@@ -654,7 +660,7 @@ local function sendEmbed(info, origin)
     end
     
     sendWebhook({ 
-        username = ".devlogic Fish Notifier v2", 
+        username = ".devlogic ", 
         embeds = {embed} 
     })
     
