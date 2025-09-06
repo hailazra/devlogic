@@ -729,13 +729,14 @@ local shopbait_btn = TabShop:Button({
     autobuybaitFeature = FeatureManager:LoadFeature("AutoBuyBait",{ 
         dropdown = shopbait_ddm, 
         button = shopbait_btn })
-end
-if autobuybaitFeature then
+    end
+    if autobuybaitFeature then
     autobuybaitFeature:SetSelectedBaitsByName(selectedBaitsSet)
-    autobuybaitFeature:Start()  -- beli 1× per bait yang dipilih, langsung selesai
-else
+    autobuybaitFeature:Start()
+    else
     shopbait_tgl:Set(false)
                 WindUI:Notify({ Title="Failed", Content="Could not start AutoBuyBait", Icon="x", Duration=3 })
+    end
 end
 })
 
