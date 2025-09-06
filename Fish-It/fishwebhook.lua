@@ -631,7 +631,7 @@ local function sendEmbed(info, origin)
     -- UPDATED: Enhanced embed with new data
     local embed = {
         title = (info.shiny and "✨ " or "🎣 ") .. "New Catch ",
-        description = hide(string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown")),
+        description = "**Player:** %s", value = hide(string.format(LocalPlayer.Name)),
         color = info.shiny and 0xFFD700 or 0x87CEEB, -- Gold for shiny, light blue for normal
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
         footer = { text = "Fish-It Notifier" },
