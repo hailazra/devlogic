@@ -786,7 +786,7 @@ local shopweather_tgl = TabShop:Toggle({
             end
 
             if next(selectedWeatherSet) == nil then
-                WindUI:Notify({ Title="Info", Content="Pilih minimal 1 weather dulu.", Icon="info", Duration=3 })
+                WindUI:Notify({ Title="Info", Content="Select atleast 1 Weather", Icon="info", Duration=3 })
                 shopweather_tgl:Set(false)
                 return
             end
