@@ -20,6 +20,9 @@ local Window = WindUI:CreateWindow({
     HideSearchBar = true,
 })
 
+-- Nonaktifkan tombol open bawaan
+Window:EditOpenButton({ Enabled = false })
+
 -- (Opsional) Tambah contoh konten agar window tidak kosong
 do
     local Tab = Window:Tab({ Title = "Main", Icon = "rbxassetid://0" })
