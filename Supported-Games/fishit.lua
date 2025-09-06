@@ -434,7 +434,7 @@ local AboutUs = TabHome:Paragraph({
     ImageSize = 30,})
 
 local DiscordBtn = TabHome:Button({
-    Title = ".devlogic Discord",
+    Title = "Discord",
     Icon  = "message-circle",
     Callback = function()
         if setclipboard then
