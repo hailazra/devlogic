@@ -239,8 +239,10 @@ if Window.Toggle then
     local originalToggle = Window.Toggle
     Window.Toggle = function(self)
         local result = originalToggle(self)
-        iconButton.Visible = not iconButton.Visible
-        isWindowOpen = not isWindowOpen
+        if not windowDestroyed then
+            iconButton.Visible = not iconButton.Visible
+            isWindowOpen = not isWindowOpen
+        end
         return result
     end
 end
@@ -249,8 +251,10 @@ if Window.Close then
     local originalClose = Window.Close
     Window.Close = function(self)
         local result = originalClose(self)
-        iconButton.Visible = true
-        isWindowOpen = false
+        if not windowDestroyed then
+            iconButton.Visible = true
+            isWindowOpen = false
+        end
         return result
     end
 end
@@ -259,8 +263,47 @@ if Window.Open then
     local originalOpen = Window.Open
     Window.Open = function(self)
         local result = originalOpen(self)
-        iconButton.Visible = false
-        isWindowOpen = true
+        if not windowDestroyed then
+            iconButton.Visible = false
+            isWindowOpen = true
+        end
         return result
     end
 end
+
+-- Setup OnDestroy handler untuk cleanup icon
+if Window.OnDestroy and type(Window.OnDestroy) == "function" then
+    Window:OnDestroy(function()
+        print("[GUI] Window destroying - cleaning up custom icon")
+        cleanupIcon()
+    end)
+elseif Window.SetOnDestroy and type(Window.SetOnDestroy) == "function" then
+    Window:SetOnDestroy(function()
+        print("[GUI] Window destroying - cleaning up custom icon")
+        cleanupIcon()
+    end)
+end
+
+-- Alternative: Monitor WindUI destruction dengan RunService
+local RunService = game:GetService("RunService")
+local destructionMonitor
+
+destructionMonitor = RunService.Heartbeat:Connect(function()
+    if windowDestroyed then
+        destructionMonitor:Disconnect()
+        return
+    end
+    
+    -- Check jika WindUI sudah tidak ada
+    local windUIFrame = PlayerGui:FindFirstChild("WindUI")
+    if not windUIFrame then
+        -- Double check dengan delay kecil untuk memastikan
+        wait(0.1)
+        windUIFrame = PlayerGui:FindFirstChild("WindUI")
+        if not windUIFrame and not windowDestroyed then
+            print("[GUI] WindUI frame not found - assuming destroyed")
+            cleanupIcon()
+            destructionMonitor:Disconnect()
+        end
+    end
+end)
