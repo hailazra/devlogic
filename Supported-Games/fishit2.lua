@@ -175,10 +175,125 @@ local function toggleWindow()
     end
 end
 
+-- IMPROVED DRAG SYSTEM
+local function makeDraggable(gui)
+    local isDragging = false
+    local dragStart = nil
+    local startPos = nil
+    local dragDistance = 0
+    local hasDraggedFar = false
+    local dragStartTime = 0
+    
+    -- Konstanta untuk kontrol drag
+    local MIN_DRAG_DISTANCE = 8     
+    local TOGGLE_MAX_DISTANCE = 5   
+    local TOGGLE_MAX_TIME = 0.5     
+
+    local function updateInput(input)
+        if not isDragging or not dragStart then return end
+        
+        local Delta = input.Position - dragStart
+        dragDistance = math.sqrt(Delta.X^2 + Delta.Y^2)
+        
+        if dragDistance > MIN_DRAG_DISTANCE then
+            hasDraggedFar = true
+        end
+        
+        if hasDraggedFar then
+            local Position = UDim2.new(
+                startPos.X.Scale, 
+                startPos.X.Offset + Delta.X, 
+                startPos.Y.Scale, 
+                startPos.Y.Offset + Delta.Y
+            )
+            gui.Position = Position
+        end
+    end
+
+    local inputChangedConnection = nil
+    local inputEndedConnection = nil
+
+    gui.InputBegan:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            isDragging = true
+            dragDistance = 0
+            hasDraggedFar = false
+            dragStart = input.Position
+            startPos = gui.Position
+            dragStartTime = tick()
+            
+            if inputChangedConnection then
+                inputChangedConnection:Disconnect()
+            end
+            if inputEndedConnection then
+                inputEndedConnection:Disconnect()
+            end
+            
+            inputEndedConnection = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    local dragEndTime = tick()
+                    local dragDuration = dragEndTime - dragStartTime
+                    
+                    isDragging = false
+                    
+                    local isClick = (dragDistance < TOGGLE_MAX_DISTANCE) and 
+                                  (dragDuration < TOGGLE_MAX_TIME) and 
+                                  (not hasDraggedFar)
+                    
+                    if isClick then
+                        print("Detected CLICK - Toggling window")
+                        wait(0.1)
+                        toggleWindow()
+                    else
+                        print("Detected DRAG - No toggle")
+                    end
+                    
+                    if inputChangedConnection then
+                        inputChangedConnection:Disconnect()
+                        inputChangedConnection = nil
+                    end
+                    if inputEndedConnection then
+                        inputEndedConnection:Disconnect()
+                        inputEndedConnection = nil
+                    end
+                end
+            end)
+        end
+    end)
+
+    gui.InputChanged:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            if isDragging then
+                updateInput(input)
+            end
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            if isDragging then
+                isDragging = false
+                
+                if inputChangedConnection then
+                    inputChangedConnection:Disconnect()
+                    inputChangedConnection = nil
+                end
+                if inputEndedConnection then
+                    inputEndedConnection:Disconnect()
+                    inputEndedConnection = nil
+                end
+            end
+        end
+    end)
+end
+
+-- Apply drag system ke icon
+makeDraggable(iconButton)
+
 -- Monitor WindUI visibility
 local lastVisible = nil
 RunService.Heartbeat:Connect(function()
-    if windowDestroyed or not iconButton then return end
+    if windowDestroyed then return end
     
     local windUIFrame = PlayerGui:FindFirstChild("WindUI")
     if windUIFrame then
@@ -196,12 +311,12 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Override Window methods with safety checks
+-- Override Window methods
 if Window.Toggle then
     local originalToggle = Window.Toggle
     Window.Toggle = function(self)
         local result = originalToggle(self)
-        if not windowDestroyed and iconButton and iconButton.Parent then
+        if not windowDestroyed and iconButton then
             iconButton.Visible = not iconButton.Visible
             isWindowOpen = not isWindowOpen
         end
@@ -213,7 +328,7 @@ if Window.Close then
     local originalClose = Window.Close
     Window.Close = function(self)
         local result = originalClose(self)
-        if not windowDestroyed and iconButton and iconButton.Parent then
+        if not windowDestroyed and iconButton then
             iconButton.Visible = true
             isWindowOpen = false
         end
@@ -225,7 +340,7 @@ if Window.Open then
     local originalOpen = Window.Open
     Window.Open = function(self)
         local result = originalOpen(self)
-        if not windowDestroyed and iconButton and iconButton.Parent then
+        if not windowDestroyed and iconButton then
             iconButton.Visible = false
             isWindowOpen = true
         end
