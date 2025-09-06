@@ -47,23 +47,14 @@ local CONFIG = {
 local TIER_NAME_MAP = {
     [1] = "Common", [2] = "Uncommon", [3] = "Rare", [4] = "Epic",
     [5] = "Legendary", [6] = "Mythic", [7] = "Secret",
-    -- Add potential alternative mappings that games might use
-    [0] = "Basic", [8] = "Ultra", [9] = "Master", [10] = "Divine",
-    -- Sometimes games use different tier systems
-    ["Common"] = "Common", ["Uncommon"] = "Uncommon", ["Rare"] = "Rare", 
-    ["Epic"] = "Epic", ["Legendary"] = "Legendary", ["Mythic"] = "Mythic", 
-    ["Secret"] = "Secret", ["Ultra"] = "Ultra", ["Master"] = "Master"
 }
 
 -- Items cache
 local itemsRoot = nil
-local tiersData = nil
 local indexBuilt = false
 local moduleById = {}
 local metaById = {}
 local scannedSet = {}
-local tiersByNumber = {}
-local tiersByName = {}
 
 -- Thumbnail and dedup cache
 local thumbCache = {}
@@ -256,20 +247,14 @@ local function safeRequire(ms)
         chance = data.Probability.Chance
     end
     
-    -- Get tier info from the actual Tiers module
-    local tierInfo = getTierInfo(D.Tier)
-    local tierRarity = tierInfo and tierInfo.Rarity or chance
-    
     return {
         id = toIdStr(D.Id),
         name = D.Name,
-        tier = D.Tier,  -- Keep original tier number/name
-        tierName = tierInfo and tierInfo.Name or getTierName(D.Tier),
-        chance = tierRarity,
+        tier = D.Tier,
+        chance = chance,
         icon = D.Icon,
         desc = D.Description,
-        _ms = ms,
-        _tierInfo = tierInfo  -- Store full tier info for later use
+        _ms = ms
     }
 end
 
@@ -331,7 +316,7 @@ local function absorbQuick(info, t)
     info.id = info.id or t.Id or t.ItemId or t.TypeId or t.FishId
     info.weight = info.weight or t.Weight or t.Mass or t.Kg or t.WeightKg
     info.chance = info.chance or t.Chance or t.Probability
-    info.tier = info.tier or t.Tier or t.Rarity or t.RarityTier
+    info.tier = info.tier or t.Tier
     info.icon = info.icon or t.Icon
     info.mutations = info.mutations or t.Mutations or t.Modifiers or t.Variants
     info.variantId = info.variantId or t.VariantId or t.Variant
@@ -339,12 +324,6 @@ local function absorbQuick(info, t)
     info.shiny = info.shiny or t.Shiny
     info.favorited = info.favorited or t.Favorited or t.Favorite
     info.uuid = info.uuid or t.UUID or t.Uuid
-    info.name = info.name or t.Name or t.FishName or t.ItemName
-    
-    -- Additional tier detection for different game structures
-    if not info.tier then
-        info.tier = t.Type or t.Class or t.Grade or t.Level
-    end
     
     if t.Data and type(t.Data) == "table" then
         absorbQuick(info, t.Data)
@@ -352,39 +331,23 @@ local function absorbQuick(info, t)
     if t.Metadata and type(t.Metadata) == "table" then
         absorbQuick(info, t.Metadata)
     end
-    if t.Stats and type(t.Stats) == "table" then
-        absorbQuick(info, t.Stats)
-    end
-    if t.Properties and type(t.Properties) == "table" then
-        absorbQuick(info, t.Properties)
-    end
 end
 
--- UPDATED: New decoder for RE/ObtainedNewFishNotification with proper tier handling
+-- UPDATED: New decoder for RE/ObtainedNewFishNotification
 local function decode_RE_ObtainedNewFishNotification(packed)
     local info = {}
     
+    -- Berdasarkan gambar debug, args biasanya berisi:
+    -- args[1] = table dengan data ikan (Shiny, Weight, VariantSeed, VariantId, dll)
+    -- args[2] = mungkin additional data atau InventoryItem
+    -- args[3] = ItemId
+    -- args[4] = possibly more metadata
+    
     if CONFIG.DEBUG then
-        log("=== DECODING ObtainedNewFishNotification ===")
-        log("Total args:", packed.n or #packed)
-        for i = 1, math.min(packed.n or #packed, 6) do
+        log("Decoding ObtainedNewFishNotification with", packed.n or #packed, "args")
+        for i = 1, math.min(packed.n or #packed, 4) do
             if packed[i] then
                 log("  arg[" .. i .. "]:", type(packed[i]))
-                if type(packed[i]) == "table" then
-                    -- Log important fields for debugging
-                    for k, v in pairs(packed[i]) do
-                        if type(k) == "string" and (
-                            k:lower():find("tier") or 
-                            k:lower():find("rarity") or 
-                            k:lower():find("id") or 
-                            k:lower():find("name") or
-                            k:lower():find("type") or
-                            k:lower():find("itemid")
-                        ) then
-                            log("    [" .. tostring(k) .. "] = " .. tostring(v))
-                        end
-                    end
-                end
             end
         end
     end
@@ -403,30 +366,14 @@ local function decode_RE_ObtainedNewFishNotification(packed)
         end
     end
     
-    -- CRITICAL: Get fish data from ModuleScript using the ID
+    -- Get metadata from item database
     if info.id then
         local meta = ensureMetaById(toIdStr(info.id))
         if meta then
             info.name = info.name or meta.name
-            info.icon = info.icon or meta.icon
-            info.desc = info.desc or meta.desc
-            
-            -- IMPORTANT: Use tier from fish ModuleScript, not from event
-            -- Event might not have tier, but ModuleScript always has correct tier
-            info.tier = meta.tier
-            info.tierName = meta.tierName
+            info.tier = info.tier or meta.tier
             info.chance = info.chance or meta.chance
-            
-            if CONFIG.DEBUG then
-                log("Found fish module for ID", info.id)
-                log("  ModuleScript tier:", meta.tier)
-                log("  Tier name:", meta.tierName)
-                log("  Fish name:", meta.name)
-            end
-        else
-            if CONFIG.DEBUG then
-                log("WARNING: No ModuleScript found for fish ID:", info.id)
-            end
+            info.icon = info.icon or meta.icon
         end
     end
     
@@ -437,15 +384,7 @@ local function decode_RE_ObtainedNewFishNotification(packed)
     end
     
     if CONFIG.DEBUG then
-        log("=== DECODED RESULT ===")
-        log("Name:", info.name or "Unknown")
-        log("ID:", info.id or "?")
-        log("Tier (final):", info.tier or "?")
-        log("Tier Name (final):", info.tierName or getTierName(info.tier))
-        log("Weight:", info.weight or "?")
-        log("Shiny:", info.shiny or false)
-        log("VariantId:", info.variantId or "none")
-        log("=======================")
+        log("Decoded fish info:", info.name or "Unknown", "ID:", info.id or "?", "Weight:", info.weight or "?")
     end
     
     return next(info) and info or nil
@@ -523,93 +462,8 @@ local function toKg(w)
     return string.format("%0." .. tostring(CONFIG.WEIGHT_DECIMALS) .. "f kg", n)
 end
 
--- ===========================
--- TIER DATA FUNCTIONS (NEW)
--- ===========================
-local function loadTiersData()
-    if tiersData then return tiersData end
-    
-    local tiersModule = ReplicatedStorage:FindFirstChild("Tiers")
-    if not tiersModule or not tiersModule:IsA("ModuleScript") then
-        log("Tiers module not found at ReplicatedStorage.Tiers")
-        return nil
-    end
-    
-    local ok, data = pcall(require, tiersModule)
-    if not ok or type(data) ~= "table" then
-        log("Failed to load Tiers module:", tostring(data))
-        return nil
-    end
-    
-    tiersData = data
-    
-    -- Build lookup tables for fast access
-    safeClear(tiersByNumber)
-    safeClear(tiersByName)
-    
-    for _, tierInfo in ipairs(data) do
-        if tierInfo.Tier and tierInfo.Name then
-            tiersByNumber[tierInfo.Tier] = tierInfo
-            tiersByName[tierInfo.Name:lower()] = tierInfo
-        end
-    end
-    
-    if CONFIG.DEBUG then
-        log("Loaded", #data, "tier definitions")
-        for tier, info in pairs(tiersByNumber) do
-            log("  Tier", tier, "=", info.Name, "(Rarity:", info.Rarity, ")")
-        end
-    end
-    
-    return tiersData
-end
-
-local function getTierInfo(tierInput)
-    loadTiersData()
-    if not tiersData then return nil end
-    
-    -- Try by tier number first
-    if type(tierInput) == "number" then
-        return tiersByNumber[tierInput]
-    end
-    
-    -- Try by tier name
-    if type(tierInput) == "string" then
-        return tiersByName[tierInput:lower()]
-    end
-    
-    return nil
-end
-
 local function getTierName(tier)
-    local tierInfo = getTierInfo(tier)
-    if tierInfo then
-        return tierInfo.Name
-    end
-    
-    -- Fallback to original mapping
-    if not tier then return "Unknown" end
-    
-    -- Try direct lookup from old mapping
-    local mapped = TIER_NAME_MAP[tier]
-    if mapped then return mapped end
-    
-    -- If tier is a string, capitalize first letter
-    if type(tier) == "string" then
-        return tier:sub(1,1):upper() .. tier:sub(2):lower()
-    end
-    
-    return tostring(tier)
-end
-
-local function getTierRarity(tier)
-    local tierInfo = getTierInfo(tier)
-    return tierInfo and tierInfo.Rarity or nil
-end
-
-local function getTierColor(tier)
-    local tierInfo = getTierInfo(tier)
-    return tierInfo and tierInfo.TierColor or nil
+    return (tier and TIER_NAME_MAP[tier]) or (tier and tostring(tier)) or "Unknown"
 end
 
 local function formatMutations(mut)
@@ -635,9 +489,7 @@ local function formatVariant(info)
     if info.variantId and info.variantId ~= "" then
         table.insert(parts, "Variant: " .. tostring(info.variantId))
     end
-    if info.variantSeed then
-        table.insert(parts, "Seed: " .. tostring(info.variantSeed))
-    end
+    
     if info.shiny then
         table.insert(parts, "✨ SHINY")
     end
@@ -764,29 +616,33 @@ local function sendEmbed(info, origin)
     -- Create "box" formatting for Discord embed (inline code)
     local function box(v)
         v = v == nil and "Unknown" or tostring(v)
-        v = v:gsub("`", "ˋ") -- Replace backticks to avoid breaking formatting
-        return string.format("`%s`", v)
+        v = v:gsub("```", "ˋ``") -- Replace backticks to avoid breaking formatting
+        return string.format("```%s```", v)
     end
 
-    -- UPDATED: Enhanced embed with proper tier handling
+    local function hide(v)
+    v = v == nil and "Unknown" or tostring(v)
+    v = v:gsub("||", "|​|") -- Add zero-width space to prevent breaking
+    return string.format("||%s||", v)
+    end
+
+    -- UPDATED: Enhanced embed with new data
     local embed = {
-        title = (info.shiny and "✨ SHINY ✨ " or "🎣 ") .. "New Catch: " .. fishName,
-        description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
+        title = (info.shiny and "✨ " or "🎣 ") .. "New Catch ",
+        description = string.format("**Player:** %s", hide(LocalPlayer.Name)),
         color = info.shiny and 0xFFD700 or 0x87CEEB, -- Gold for shiny, light blue for normal
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-        footer = { text = ".devlogic Fish Notifier v2.1" },
+        footer = { text = ".devlogic | Fish-It Notifier" },
         fields = {
             { name = "Fish Name 🐟",   value = box(fishName),                              inline = false },
             { name = "⚖️ Weight",      value = box(toKg(info.weight)),                     inline = true  },
             { name = "🎲 Chance",       value = box(fmtChanceOneInFromNumber(info.chance)), inline = true  },
-            { name = "💎 Rarity",       value = box(info.tierName or getTierName(info.tier)), inline = true  },
-            { name = "🧬 Mutation(s)",  value = box(formatMutations(info.mutations or info.mutation)), inline = false },
-            { name = "🎨 Variant",      value = box(formatVariant(info)),                   inline = false },
-            { name = "Fish ID",         value = box(info.id and tostring(info.id) or "Unknown"),       inline = true  },
+            { name = "💎 Rarity",       value = box(getTierName(info.tier)),                inline = true  },
+            { name = "🧬 Mutation",      value = box(formatVariant(info)),                   inline = false },
         }
     }
 
-    -- Add UUID field if available
+        -- Add UUID field if available
     if info.uuid and info.uuid ~= "" then
         table.insert(embed.fields, { name = "🆔 UUID", value = box(info.uuid), inline = true })
     end
@@ -800,7 +656,7 @@ local function sendEmbed(info, origin)
     end
     
     sendWebhook({ 
-        username = ".devlogic Fish Notifier v2", 
+        username = ".devlogic ", 
         embeds = {embed} 
     })
     
@@ -1059,7 +915,7 @@ function FishWebhookFeature:Cleanup()
 end
 
 -- ===========================
--- DEBUG FUNCTIONS (ENHANCED)
+-- DEBUG FUNCTIONS (NEW)
 -- ===========================
 function FishWebhookFeature:EnableInboundDebug()
     CONFIG.DEBUG = true
@@ -1088,63 +944,6 @@ function FishWebhookFeature:SimulateFishCatch(testData)
     }
     
     sendEmbed(testData, "SIMULATED_TEST")
-end
-
--- NEW: Debug tier detection specifically
-function FishWebhookFeature:DebugTierDetection()
-    log("=== LOADING TIERS MODULE ===")
-    local tiers = loadTiersData()
-    if not tiers then
-        log("ERROR: Could not load tiers data!")
-        return
-    end
-    
-    log("=== TIER MAPPING DEBUG ===")
-    for tier, info in pairs(tiersByNumber) do
-        log("Tier", tier, "->", info.Name, "(Rarity:", info.Rarity, ")")
-    end
-    log("==========================")
-    
-    log("=== OLD TIER NAME TESTS ===")
-    for k, v in pairs(TIER_NAME_MAP) do
-        log("Old mapping:", tostring(k), "->", tostring(v))
-    end
-    
-    -- Test common tier values
-    local testTiers = {1, 2, 3, 4, 5, 6, 7, "Common", "Legendary", "Mythic", "SECRET"}
-    log("=== TIER NAME TESTS ===")
-    for _, tier in ipairs(testTiers) do
-        log("Input:", tostring(tier), "-> Output:", getTierName(tier))
-    end
-    log("=======================")
-end
-
--- NEW: Test specific fish ID
-function FishWebhookFeature:TestFishId(fishId)
-    if not fishId then
-        log("Usage: TestFishId(69) -- where 69 is fish ID")
-        return
-    end
-    
-    log("=== TESTING FISH ID", fishId, "===")
-    local meta = ensureMetaById(toIdStr(fishId))
-    if meta then
-        log("Fish found!")
-        log("  Name:", meta.name)
-        log("  Tier:", meta.tier)
-        log("  Tier Name:", meta.tierName)
-        log("  Chance:", meta.chance)
-        log("  Icon:", meta.icon)
-    else
-        log("Fish ID", fishId, "not found in modules")
-    end
-    log("========================")
-end
-
--- NEW: Monitor and log all incoming fish data for analysis
-function FishWebhookFeature:StartTierAnalysis()
-    CONFIG.DEBUG = true
-    log("Started tier analysis mode - all fish data will be logged")
 end
 
 return FishWebhookFeature
