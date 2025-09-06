@@ -35,11 +35,12 @@ local FeatureManager = {}
 FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
-    AutoFish        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
-    AutoSellFish    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua",
+    AutoFish           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
+    AutoSellFish       = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua",
     AutoTeleportIsland = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua",
-    FishWebhook     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/fishwebhook.lua",
-    AutoBuyWeather = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyweather.lua"
+    FishWebhook        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/fishwebhook.lua",
+    AutoBuyWeather     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyweather.lua",
+    AutoBuyBait        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuybait.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -687,14 +688,35 @@ local shopbait_sec = TabShop:Section({
     TextSize = 17, -- Default Size
 })
 
+local buyBaitFeature          = nil
+local selectedBuyBait            = {}
+
+local BUYABLE_BAIT = {
+    "Topwater Bait", "Luck Bait", "Midnight Bait", "Nature Bait", "Chroma Bait", "Dark Matter Bait", "Corrupt Bait"
+    "Aether Bait" 
+}
+
+local BUYABLE_BAIT_OPTIONS = {}
+for _, bait in ipairs(BUYABLE_BAIT) do
+    table.insert(BUYABLE_BAIT_OPTIONS, bait)
+end
+
 local shopbait_ddm = TabShop:Dropdown({
     Title = "Select Bait",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = { "Category A" },
+    Values = BUYABLE_BAIT_OPTIONS,
+    Value = {},
     Multi = true,
     AllowNone = true,
     Callback = function(option) 
-        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    selectedBuyBait = {}
+        for _, opt in ipairs(options) do
+            if type(opt) == "string" and opt ~= "" then
+                selectedBuyBait[opt] = true
+            end
+        end
+        if buyBaitFeature and buyBaitFeature.SetBait then
+            buyBaitFeature:SetBait(selectedBuyBait)
+        end
     end
 })
 
@@ -704,8 +726,18 @@ local shopbait_btn = TabShop:Button({
     Desc = "",
     Locked = false,
     Callback = function()
-        print("clicked")
-    end
+  if not autobuybaitFeature then
+    autobuybaitFeature = FeatureManager:LoadFeature("AutoBuyBait",{ 
+        dropdown = shopbait_ddm, 
+        button = shopbait_btn })
+end
+if autobuybaitFeature then
+    autobuybaitFeature:SetSelectedBaitsByName(selectedBaitsSet)
+    autobuybaitFeature:Start()  -- beli 1× per bait yang dipilih, langsung selesai
+else
+    shopbait_tgl:Set(false)
+                WindUI:Notify({ Title="Failed", Content="Could not start AutoBuyBait", Icon="x", Duration=3 })
+end
 })
 
 --- Other Item
@@ -836,65 +868,51 @@ local teleisland_sec = TabTeleport:Section({
     TextSize = 17, -- Default Size
 })
 
-local autoTeleIslandFeature = nil
-local currentIsland = "Fisherman Island"
+local autoTeleIslandFeature = nil 
+local currentIsland = "Fisherman Island" 
 
 local teleisland_dd = TabTeleport:Dropdown({
-    Title = "Select Island",
-    Values = {
-        "Fisherman Island",
-        "Esoteric Depths",
-        "Enchant Altar",
-        "Kohana",
-        "Kohana Volcano",
-        "Tropical Grove",
-        "Crater Island",
-        "Coral Reefs",
-        "Sisyphus Statue",
-        "Treasure Room"
-    },
-    Value = currentIsland,
-    Callback = function(option)
-        currentIsland = option
-        -- jika modul sudah dimuat, set island langsung
-        if autoTeleIslandFeature and autoTeleIslandFeature.SetIsland then
-            autoTeleIslandFeature:SetIsland(option)
-        end
-    end
-})
-
+     Title = "Select Island",
+      Values = { "Fisherman Island", 
+      "Esoteric Depths", 
+      "Enchant Altar", 
+      "Kohana", 
+      "Kohana Volcano", 
+      "Tropical Grove", 
+      "Crater Island", 
+      "Coral Reefs", 
+      "Sisyphus Statue", 
+      "Treasure Room" }, 
+      Value = currentIsland, 
+      Callback = function(option) 
+        currentIsland = option 
+         if autoTeleIslandFeature and autoTeleIslandFeature.SetIsland 
+         then autoTeleIslandFeature:SetIsland(option) 
+        end 
+    end }) 
 
 local teleisland_btn = TabTeleport:Button({
-    Title = "Teleport To Island",
-    Desc  = "",
-    Locked = false,
-    Callback = function()
-        -- Muat modul jika belum pernah dimuat
-        if not autoTeleIslandFeature then
-            autoTeleIslandFeature = FeatureManager:LoadFeature("AutoTeleportIsland", {
-                dropdown = teleisland_dd,
-                button   = teleisland_btn
-            })
-        end
-        -- Jika modul berhasil dimuat, lakukan set dan teleport
-        if autoTeleIslandFeature then
-            if autoTeleIslandFeature.SetIsland then
-                autoTeleIslandFeature:SetIsland(currentIsland)
-            end
-            if autoTeleIslandFeature.Teleport then
-                autoTeleIslandFeature:Teleport(currentIsland)
-            end
-        else
-            WindUI:Notify({
-                Title   = "Error",
-                Content = "AutoTeleportIsland feature could not be loaded",
-                Icon    = "x",
-                Duration = 3
-            })
-        end
-    end
+         Title = "Teleport To Island", 
+         Desc = "", 
+         Locked = false, 
+         Callback = function() 
+             if not autoTeleIslandFeature then 
+                autoTeleIslandFeature = FeatureManager:LoadFeature("AutoTeleportIsland",
+                 { dropdown = teleisland_dd, button = teleisland_btn }) 
+           end 
+             if autoTeleIslandFeature then 
+                if autoTeleIslandFeature.SetIsland then 
+                    autoTeleIslandFeature:SetIsland(currentIsland) 
+            end 
+               if autoTeleIslandFeature.Teleport then 
+                    autoTeleIslandFeature:Teleport(currentIsland) end 
+                else WindUI:Notify({ 
+                    Title = "Error",
+                     Content = "AutoTeleportIsland feature could not be loaded",
+                      Icon = "x", Duration = 3 })
+          end 
+     end 
 })
-
 
 local teleplayer_sec = TabTeleport:Section({ 
     Title = "Players",
