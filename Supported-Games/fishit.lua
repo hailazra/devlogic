@@ -723,34 +723,20 @@ local shopbait_btn = TabShop:Button({
     Desc = "Purchase selected baits (one-time)",
     Locked = false,
     Callback = function()
-        -- Load feature pada first-time
-        if not autobuybaitFeature then
-            autobuybaitFeature = FeatureManager:LoadFeature("AutoBuyBait", {
-                dropdown = shopbait_ddm,
-                button   = shopbait_btn
-            })
-            
-            -- Jika berhasil dimuat, refresh dropdown dengan bait yang tersedia
-            if autobuybaitFeature then
-                task.spawn(function()
-                    -- Beri waktu untuk Init() selesai
-                    task.wait(0.5)
-                    
-                    local availableBaits = autobuybaitFeature:GetAvailableBaits()
-                    local baitNames = {}
-                    for _, bait in ipairs(availableBaits) do
-                        table.insert(baitNames, bait.name)
-                    end
-                    
-                    -- Reload dropdown dengan data real
-                    if shopbait_ddm.Reload then
-                        shopbait_ddm:Reload(baitNames)
-                    end
-                    
-                    print("[AutoBuyBait] Dropdown refreshed with", #baitNames, "baits")
-                end)
-            end
-        end
+        -- Di button callback:
+    if autobuybaitFeature then
+    -- Set selected baits
+    autobuybaitFeature:SetSelectedBaitsByName(selectedBaitsSet)
+    
+    -- Start one-time purchase
+    local success = autobuybaitFeature:Start()
+    
+    if success then
+        WindUI:Notify({ Title = "Success", Content = "Bait purchase completed", Icon = "check", Duration = 3 })
+    else
+        WindUI:Notify({ Title = "Failed", Content = "Could not purchase baits", Icon = "x", Duration = 3 })
+    end
+end
         
         -- Validasi selection
         if not selectedBaitsSet or #selectedBaitsSet == 0 then
