@@ -1,254 +1,291 @@
--- Fish-It Feature: AutoBuy Bait (one-shot, no delay/jitter/maxspend)
--- Lifecycle: :Init(gui?), :Start(config?), :Stop(), :Cleanup()
--- Setters: :SetSelectedBaitsByName(listOrSet), :SetSelectedBaitsById(listOrArray)
--- Utils: :GetCatalogRows(), :RefreshCatalog(), :GetLogSignal()
--- Patuh kontrak standarfiturscript (lifecycle, setters, config fleksibel, no popup)
+-- Fish-It/AutoBuyBait.lua
+-- AutoBuyBait Feature mengikuti Fish-It Feature Script Contract
 
-local AutoBuybBaitFeature = {}
-AutoBuyBaitFeature.__index = AutoBuyBaitFeature
+local AutoBuyBait = {}
+AutoBuyBait.__index = AutoBuyBait
 
 -- Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local RS = game:GetService("ReplicatedStorage")
-local LocalPlayer = Players.LocalPlayer
 
--- ========= State =========
+-- Constants
+local INTER_PURCHASE_DELAY = 0.5 -- Anti-spam delay antar pembelian
+
+-- State variables
 local running = false
-local logEvent = Instance.new("BindableEvent")
+local baitsFolder = nil
+local purchaseBaitRemote = nil
+local guiControls = {}
 
-local opts = {
-    SafeRequire = true,
-    ListOnInit  = false,
-}
+-- Storage untuk tracking bait yang sudah dibeli (persistent)
+local purchasedBaits = {}
+local selectedBaits = {} -- Bait yang dipilih dari dropdown multi
+local lastPurchaseTime = 0
 
-local purchaseRF = nil
+-- ========== LIFECYCLE METHODS ==========
 
--- Catalog
-local byId, byName = {}, {}
-local rows = {}  -- { {Id,Name,Tier,Price}, ... }
-
--- Selection (set: id->true)
-local selectedIds = {}
-
--- ========= Utils =========
-local function log(fmt, ...)
-    local msg = select("#", ...) > 0 and string.format(tostring(fmt), ...) or tostring(fmt)
-    if logEvent then logEvent:Fire(msg) end
-    print("[autobuybait] " .. msg)
-end
-
-local function scanDescendantsForRF()
-    -- cari RemoteFunction bernama "RF/PurchaseBait" di seluruh RS
-    for _, inst in ipairs(RS:GetDescendants()) do
-        if inst.ClassName == "RemoteFunction" and inst.Name == "RF/PurchaseBait" then
-            return inst
-        end
-    end
-    -- fallback ke Packages/_Index/*/net/RF/PurchaseBait
-    local ok, rf = pcall(function()
-        local Packages = RS:FindFirstChild("Packages")
-        if not Packages then return nil end
-        local _Index = Packages:FindFirstChild("_Index")
-        if not _Index then return nil end
-        for _, folder in ipairs(_Index:GetChildren()) do
-            local net = folder:FindFirstChild("net", true)
-            if net then
-                local cand = net:FindFirstChild("RF/PurchaseBait")
-                if cand and cand.ClassName == "RemoteFunction" then
-                    return cand
-                end
-            end
-        end
-        return nil
+function AutoBuyBait:Init(gui)
+    -- Store GUI controls reference
+    guiControls = gui or {}
+    
+    -- Initialize ReplicatedStorage references with timeout
+    local success1, baits = pcall(function()
+        return ReplicatedStorage:WaitForChild("Baits", 5)
     end)
-    if ok and rf then return rf end
-    return nil
-end
-
-local function addRowFromModule(mod)
-    local ok, data
-    if opts.SafeRequire then
-        ok, data = pcall(require, mod)
-    else
-        ok, data = true, require(mod)
-    end
-    if not ok or typeof(data) ~= "table" then return end
-    local d = data.Data or {}
-    local id = d.Id or data.Id
-    local name = d.Name or data.Name or mod.Name
-    local tier = d.Tier or data.Tier
-    local price = data.Price
-    if typeof(id) == "number" and name and typeof(price) == "number" then
-        byId[id] = { Id=id, Name=name, Tier=tier, Price=price, Module=mod, Raw=data }
-        byName[string.lower(name)] = byId[id]
-        table.insert(rows, { Id=id, Name=name, Tier=tier, Price=price })
-    end
-end
-
-local function buildCatalogRecursive()
-    table.clear(byId); table.clear(byName); table.clear(rows)
-    local root = RS:FindFirstChild("Baits")
-    if not root then
-        warn("[autobuybait] ReplicatedStorage.Baits tidak ditemukan")
-        return
-    end
-    -- dukung struktur bersarang: ambil semua ModuleScript di bawah Baits
-    for _, inst in ipairs(root:GetDescendants()) do
-        if inst:IsA("ModuleScript") then
-            addRowFromModule(inst)
-        end
-    end
-    table.sort(rows, function(a,b)
-        if (a.Tier or 0) == (b.Tier or 0) then return a.Id < b.Id end
-        return (a.Tier or 0) < (b.Tier or 0)
+    
+    local success2, remote = pcall(function()
+        return ReplicatedStorage:WaitForChild("Packages", 5)
+            :WaitForChild("_Index", 5)
+            :WaitForChild("sleitnick_net@0.2.0", 5)
+            :WaitForChild("net", 5)
+            :WaitForChild("RF/PurchaseBait", 5)
     end)
-end
-
--- ========= Lifecycle (SPEC) =========
-function AutoBuyBaitFeature:Init(guiControls)
-    -- guiControls boleh dipakai untuk pre-populate dropdown, tapi opsional
-    purchaseRF = scanDescendantsForRF()
-    if not purchaseRF then
-        warn("[autobuybait] RemoteFunction 'RF/PurchaseBait' tidak ditemukan.")
-        -- tetap return true; GUI bisa menampilkan warning dan coba lagi nanti
+    
+    if not success1 or not baits then
+        warn("[AutoBuyBait] Failed to find ReplicatedStorage.Baits")
+        return false
     end
-
-    buildCatalogRecursive()
-    if opts.ListOnInit then
-        log("Baits terdeteksi: %d", #rows)
-        for _, r in ipairs(rows) do
-            log("  #%d  %-22s  Tier:%s  Price:%s", r.Id, r.Name, tostring(r.Tier), tostring(r.Price))
+    
+    if not success2 or not remote then
+        warn("[AutoBuyBait] Failed to find PurchaseBait remote")
+        return false
+    end
+    
+    baitsFolder = baits
+    purchaseBaitRemote = remote
+    
+    -- Pre-populate dropdown if GUI control exists
+    if guiControls.baitsDropdown and guiControls.baitsDropdown.Reload then
+        local baitOptions = {}
+        local allBaits = self:_scanAllBaits()
+        
+        for _, bait in ipairs(allBaits) do
+            local displayText = string.format("%s (T%d - %d coins)", bait.name, bait.tier, bait.price)
+            table.insert(baitOptions, displayText)
         end
+        
+        guiControls.baitsDropdown:Reload(baitOptions)
     end
-
-    -- Contoh: pre-populate dropdown kalau disediakan
-    -- if guiControls and guiControls.dropdown then guiControls.dropdown:Reload(mapNames) end
-
+    
     return true
 end
 
-function AutoBuyBaitFeature:Start(config)
+function AutoBuyBait:Start(config)
     if running then return end
-    -- config override (khusus fitur); abaikan kunci tak dikenal
-    if typeof(config) == "table" then
-        if config.baitNames then self:SetSelectedBaitsByName(config.baitNames) end
-        if config.baitIds   then self:SetSelectedBaitsById(config.baitIds)   end
-    end
-
-    if not next(selectedIds) then
-        log("Tidak ada bait yang dipilih. Set lewat setter atau config.")
-        return
-    end
-    if not purchaseRF then
-        log("Tidak bisa start: RF/PurchaseBait tidak ditemukan.")
-        return
-    end
-
     running = true
-    -- one-shot synchronous: beli sekali per bait yang dipilih (berurutan, non-paralel)
-    local ids = {}
-    for id in pairs(selectedIds) do table.insert(ids, id) end
-    table.sort(ids)
-
-    local tried, success = 0, 0
-    for _, id in ipairs(ids) do
-        if not running then break end
-        local row = byId[id]
-        if row then
-            tried += 1
-            log("Beli #%d (%s)", row.Id, row.Name)
-            local ok, res = pcall(function()
-                return purchaseRF:InvokeServer(row.Id)
-            end)
-            if ok then
-                success += 1
-            else
-                log("Gagal beli #%d: %s", row.Id, tostring(res))
-            end
+    
+    -- Parse config jika ada
+    if config then
+        if config.baitList then
+            self:SetSelectedBaits(config.baitList)
+        end
+        if config.interDelay then
+            INTER_PURCHASE_DELAY = math.max(0.1, config.interDelay)
         end
     end
-
-    log("Selesai. success=%d/%d", success, tried)
-    running = false
+    
+    -- Langsung lakukan pembelian (one-time) kemudian stop
+    local success = self:PurchaseSelectedBaits()
+    self:Stop() -- Langsung stop setelah purchase
+    return success
 end
 
-function AutoBuyBaitFeature:Stop()
+function AutoBuyBait:Stop()
     if not running then return end
     running = false
-    log("Stopped.")
 end
 
-function AutoBuyBaitFeature:Cleanup()
+function AutoBuyBait:Cleanup()
     self:Stop()
-    -- reset state & cache
-    table.clear(byId); table.clear(byName); table.clear(rows)
-    table.clear(selectedIds)
-    purchaseRF = nil
+    
+    -- Reset state
+    selectedBaits = {}
+    guiControls = {}
+    lastPurchaseTime = 0
+    
+    -- Don't reset purchasedBaits - ini harus persistent
 end
 
--- ========= Setters (khusus fitur) =========
-function AutoBuyBaitFeature:SetSelectedBaitsByName(namesOrSet)
-    table.clear(selectedIds)
-    if typeof(namesOrSet) == "table" then
-        -- dukung array atau set/dict
-        if #namesOrSet > 0 then
-            for _, nm in ipairs(namesOrSet) do
-                local row = byName[string.lower(tostring(nm))]
-                if row then selectedIds[row.Id] = true end
+-- ========== SETTERS & ACTIONS (Feature-Specific) ==========
+
+-- Setter untuk bait yang dipilih dari dropdown multi
+function AutoBuyBait:SetSelectedBaits(baitList)
+    if not baitList then return false end
+    
+    selectedBaits = {}
+    
+    -- Normalisasi input: terima array atau set/dict
+    if type(baitList) == "table" then
+        if #baitList > 0 then
+            -- Array format
+            for _, baitName in ipairs(baitList) do
+                if type(baitName) == "string" then
+                    table.insert(selectedBaits, baitName)
+                end
             end
         else
-            for nm, on in pairs(namesOrSet) do
-                if on then
-                    local row = byName[string.lower(tostring(nm))]
-                    if row then selectedIds[row.Id] = true end
+            -- Set/dict format
+            for baitName, enabled in pairs(baitList) do
+                if enabled and type(baitName) == "string" then
+                    table.insert(selectedBaits, baitName)
                 end
             end
         end
-    elseif typeof(namesOrSet) == "string" then
-        local row = byName[string.lower(namesOrSet)]
-        if row then selectedIds[row.Id] = true end
-    else
-        return false
     end
+    
     return true
 end
 
-function AutoBuyBaitFeature:SetSelectedBaitsById(listOrSet)
-    table.clear(selectedIds)
-    if typeof(listOrSet) == "table" then
-        if #listOrSet > 0 then
-            for _, id in ipairs(listOrSet) do
-                id = tonumber(id)
-                if id and byId[id] then selectedIds[id] = true end
-            end
+-- Action untuk membeli semua bait yang dipilih (one-time purchase)
+function AutoBuyBait:PurchaseSelectedBaits()
+    if not running then
+        warn("[AutoBuyBait] Feature not started")
+        return false
+    end
+    
+    if #selectedBaits == 0 then
+        warn("[AutoBuyBait] No baits selected")
+        return false
+    end
+    
+    local currentTime = tick()
+    if currentTime - lastPurchaseTime < INTER_PURCHASE_DELAY then
+        warn("[AutoBuyBait] Purchase cooldown active")
+        return false
+    end
+    
+    local purchasedCount = 0
+    local skippedCount = 0
+    local errorCount = 0
+    
+    -- Scan semua bait untuk mendapatkan data
+    local allBaits = self:_scanAllBaits()
+    local baitDataMap = {}
+    for _, bait in ipairs(allBaits) do
+        baitDataMap[bait.name] = bait
+    end
+    
+    -- Proses pembelian untuk setiap bait yang dipilih
+    for _, baitName in ipairs(selectedBaits) do
+        local baitData = baitDataMap[baitName]
+        
+        if not baitData then
+            warn("[AutoBuyBait] Bait data not found: " .. baitName)
+            errorCount = errorCount + 1
+        elseif self:IsBaitPurchased(baitData.id) then
+            -- Skip jika sudah dibeli
+            skippedCount = skippedCount + 1
         else
-            for id, on in pairs(listOrSet) do
-                if on then
-                    id = tonumber(id)
-                    if id and byId[id] then selectedIds[id] = true end
-                end
+            -- Coba beli bait
+            local success = self:_purchaseBait(baitData.id, baitData.name)
+            if success then
+                purchasedCount = purchasedCount + 1
+                self:_markBaitAsPurchased(baitData.id)
+            else
+                errorCount = errorCount + 1
+            end
+            
+            -- Anti-spam delay
+            if purchasedCount > 0 then
+                task.wait(INTER_PURCHASE_DELAY)
             end
         end
-    elseif tonumber(listOrSet) and byId[tonumber(listOrSet)] then
-        selectedIds[tonumber(listOrSet)] = true
-    else
+    end
+    
+    lastPurchaseTime = currentTime
+    
+    -- Log hasil
+    local resultMsg = string.format("[AutoBuyBait] Purchase complete: %d bought, %d skipped, %d errors", 
+        purchasedCount, skippedCount, errorCount)
+    print(resultMsg)
+    
+    return purchasedCount > 0
+end
+
+-- Getter untuk cek apakah bait sudah dibeli
+function AutoBuyBait:IsBaitPurchased(baitId)
+    return purchasedBaits[baitId] == true
+end
+
+-- Getter untuk mendapatkan semua bait yang tersedia
+function AutoBuyBait:GetAvailableBaits()
+    return self:_scanAllBaits()
+end
+
+-- Reset tracking bait yang sudah dibeli (untuk testing)
+function AutoBuyBait:ResetPurchaseHistory()
+    purchasedBaits = {}
+    return true
+end
+
+-- ========== INTERNAL HELPER METHODS ==========
+
+-- Scan semua bait dari ReplicatedStorage.Baits (rekursif)
+function AutoBuyBait:_scanAllBaits()
+    local baitsList = {}
+    
+    if not baitsFolder then
+        return baitsList
+    end
+    
+    -- Scan rekursif untuk semua ModuleScript di folder Baits
+    local function scanFolder(folder)
+        for _, child in pairs(folder:GetChildren()) do
+            if child:IsA("ModuleScript") then
+                local success, baitData = pcall(require, child)
+                if success and baitData and baitData.Data then
+                    table.insert(baitsList, {
+                        name = baitData.Data.Name or "Unknown",
+                        id = baitData.Data.Id or 0,
+                        price = baitData.Price or 0,
+                        tier = baitData.Data.Tier or 1,
+                        description = baitData.Data.Description or "",
+                        modifiers = baitData.Modifiers or {},
+                        module = child
+                    })
+                end
+            elseif child:IsA("Folder") then
+                scanFolder(child) -- Rekursif untuk subfolder
+            end
+        end
+    end
+    
+    scanFolder(baitsFolder)
+    
+    -- Sort berdasarkan tier dan nama
+    table.sort(baitsList, function(a, b)
+        if a.tier == b.tier then
+            return a.name < b.name
+        end
+        return a.tier < b.tier
+    end)
+    
+    return baitsList
+end
+
+-- Internal purchase function dengan error handling
+function AutoBuyBait:_purchaseBait(baitId, baitName)
+    if not purchaseBaitRemote then
+        warn("[AutoBuyBait] Purchase remote not available")
         return false
     end
-    return true
+    
+    local success, result = pcall(function()
+        return purchaseBaitRemote:InvokeServer(baitId)
+    end)
+    
+    if success and result then
+        print("[AutoBuyBait] Successfully purchased: " .. baitName .. " (ID: " .. baitId .. ")")
+        return true
+    else
+        warn("[AutoBuyBait] Failed to purchase " .. baitName .. ": " .. tostring(result))
+        return false
+    end
 end
 
--- ========= Public Utils =========
-function AutoBuyBaitFeature:GetCatalogRows()
-    return rows
+-- Mark bait sebagai sudah dibeli
+function AutoBuyBait:_markBaitAsPurchased(baitId)
+    purchasedBaits[baitId] = true
 end
 
-function AutoBuyBaitFeature:RefreshCatalog()
-    buildCatalogRecursive()
-    return true
-end
-
-function AutoBuyBaitFeature:GetLogSignal()
-    return logEvent.Event
-end
-
-return AutoBuyBaitFeature
+return AutoBuyBait
