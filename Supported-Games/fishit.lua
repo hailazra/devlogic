@@ -98,7 +98,7 @@ local Window = WindUI:CreateWindow({
     HideSearchBar = true,
 })
 
-WindUI:SetFont("rbxasset://12187366657")
+WindUI:SetFont("rbxasset://12187373592")
 
 -- CUSTOM ICON INTEGRATION - Disable default open button
 Window:EditOpenButton({ Enabled = false })
