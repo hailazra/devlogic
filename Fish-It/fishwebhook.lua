@@ -1,6 +1,7 @@
 -- ===========================
--- FISH WEBHOOK FEATURE
+-- FISH WEBHOOK FEATURE (UPDATED)
 -- File: fishwebhook.lua
+-- Updated to use RE/ObtainedNewFishNotification
 -- ===========================
 
 local FishWebhookFeature = {}
@@ -37,8 +38,9 @@ local CONFIG = {
     DEDUP_TTL_SEC = 12.0,
     USE_LARGE_IMAGE = false,
     THUMB_SIZE = "150x150",
-    INBOUND_EVENTS = { "RE/FishCaught" },
-    INBOUND_PATTERNS = { "fish", "catch", "legend", "myth", "secret", "reward" },
+    -- UPDATED: Use new RemoteEvent for fish notifications
+    INBOUND_EVENTS = { "RE/ObtainedNewFishNotification" },
+    INBOUND_PATTERNS = { "fish", "catch", "legend", "myth", "secret", "reward", "obtained", "notification" },
     ID_NAME_MAP = {},
 }
 
@@ -306,7 +308,7 @@ local function ensureMetaById(idStr)
 end
 
 -- ===========================
--- FISH PROCESSING FUNCTIONS
+-- FISH PROCESSING FUNCTIONS (UPDATED)
 -- ===========================
 local function absorbQuick(info, t)
     if type(t) ~= "table" then return end
@@ -317,12 +319,78 @@ local function absorbQuick(info, t)
     info.tier = info.tier or t.Tier
     info.icon = info.icon or t.Icon
     info.mutations = info.mutations or t.Mutations or t.Modifiers or t.Variants
+    info.variantId = info.variantId or t.VariantId or t.Variant
+    info.variantSeed = info.variantSeed or t.VariantSeed
+    info.shiny = info.shiny or t.Shiny
+    info.favorited = info.favorited or t.Favorited or t.Favorite
+    info.uuid = info.uuid or t.UUID or t.Uuid
     
     if t.Data and type(t.Data) == "table" then
         absorbQuick(info, t.Data)
     end
+    if t.Metadata and type(t.Metadata) == "table" then
+        absorbQuick(info, t.Metadata)
+    end
 end
 
+-- UPDATED: New decoder for RE/ObtainedNewFishNotification
+local function decode_RE_ObtainedNewFishNotification(packed)
+    local info = {}
+    
+    -- Berdasarkan gambar debug, args biasanya berisi:
+    -- args[1] = table dengan data ikan (Shiny, Weight, VariantSeed, VariantId, dll)
+    -- args[2] = mungkin additional data atau InventoryItem
+    -- args[3] = ItemId
+    -- args[4] = possibly more metadata
+    
+    if CONFIG.DEBUG then
+        log("Decoding ObtainedNewFishNotification with", packed.n or #packed, "args")
+        for i = 1, math.min(packed.n or #packed, 4) do
+            if packed[i] then
+                log("  arg[" .. i .. "]:", type(packed[i]))
+            end
+        end
+    end
+    
+    -- Process each argument
+    for i = 1, packed.n or #packed do
+        local arg = packed[i]
+        if type(arg) == "table" then
+            absorbQuick(info, arg)
+        elseif type(arg) == "number" or type(arg) == "string" then
+            if not info.id then
+                info.id = toIdStr(arg)
+            end
+        elseif typeof(arg) == "Instance" then
+            absorbQuick(info, toAttrMap(arg))
+        end
+    end
+    
+    -- Get metadata from item database
+    if info.id then
+        local meta = ensureMetaById(toIdStr(info.id))
+        if meta then
+            info.name = info.name or meta.name
+            info.tier = info.tier or meta.tier
+            info.chance = info.chance or meta.chance
+            info.icon = info.icon or meta.icon
+        end
+    end
+    
+    -- Fallback name lookup
+    local idS = info.id and toIdStr(info.id)
+    if idS and not info.name and CONFIG.ID_NAME_MAP[idS] then
+        info.name = CONFIG.ID_NAME_MAP[idS]
+    end
+    
+    if CONFIG.DEBUG then
+        log("Decoded fish info:", info.name or "Unknown", "ID:", info.id or "?", "Weight:", info.weight or "?")
+    end
+    
+    return next(info) and info or nil
+end
+
+-- Keep old decoder as fallback
 local function decode_RE_FishCaught(packed)
     local info = {}
     local a1, a2 = packed[1], packed[2]
@@ -354,6 +422,22 @@ local function decode_RE_FishCaught(packed)
     end
     
     return next(info) and info or nil
+end
+
+-- UPDATED: Universal decoder that handles both event types
+local function decodeInboundEvent(eventName, packed)
+    if eventName == "RE/ObtainedNewFishNotification" then
+        return decode_RE_ObtainedNewFishNotification(packed)
+    elseif eventName == "RE/FishCaught" then
+        return decode_RE_FishCaught(packed)
+    else
+        -- Try both decoders for unknown events
+        local info = decode_RE_ObtainedNewFishNotification(packed)
+        if not info then
+            info = decode_RE_FishCaught(packed)
+        end
+        return info
+    end
 end
 
 -- ===========================
@@ -399,6 +483,21 @@ local function formatMutations(mut)
     return "None"
 end
 
+-- UPDATED: Format variant information
+local function formatVariant(info)
+    local parts = {}
+    if info.variantId and info.variantId ~= "" then
+        table.insert(parts, "Variant: " .. tostring(info.variantId))
+    end
+    if info.variantSeed then
+        table.insert(parts, "Seed: " .. tostring(info.variantSeed))
+    end
+    if info.shiny then
+        table.insert(parts, "✨ SHINY")
+    end
+    return (#parts > 0) and table.concat(parts, " | ") or "None"
+end
+
 -- ===========================
 -- DEDUPLICATION FUNCTIONS
 -- ===========================
@@ -414,8 +513,11 @@ local function sigFromInfo(info)
     local wt = roundWeight(info.weight)
     local tier = tostring(info.tier or "?")
     local ch = tostring(info.chance or "?")
-    local mut = ""
+    local variant = tostring(info.variantId or "")
+    local shiny = tostring(info.shiny or false)
+    local uuid = tostring(info.uuid or "")
     
+    local mut = ""
     if type(info.mutations) == "table" then
         local keys = {}
         for k in pairs(info.mutations) do
@@ -432,7 +534,7 @@ local function sigFromInfo(info)
         mut = tostring(info.mutation or "")
     end
     
-    return table.concat({id, wt, tier, ch, mut}, "|")
+    return table.concat({id, wt, tier, ch, variant, shiny, uuid, mut}, "|")
 end
 
 local function shouldSend(sig)
@@ -473,7 +575,7 @@ local function shouldSendFish(info)
 end
 
 -- ===========================
--- WEBHOOK SENDING FUNCTION
+-- WEBHOOK SENDING FUNCTION (UPDATED)
 -- ===========================
 local function sendEmbed(info, origin)
     -- Soft debounce for burst spam with different signatures
@@ -504,39 +606,44 @@ local function sendEmbed(info, origin)
         imageUrl = resolveIconUrl(metaById[toIdStr(info.id)].icon)
     end
 
-    -- ADD THIS fallback:
+    -- Fallback: use assetId directly
     if not imageUrl and info.id then
-    imageUrl = resolveIconUrl(info.id) -- pakai assetId langsung
+        imageUrl = resolveIconUrl(info.id)
     end
     
     if CONFIG.DEBUG then 
         log("Image URL:", tostring(imageUrl)) 
     end
 
-    -- bikin "box" di Discord embed (inline code)
+    -- Create "box" formatting for Discord embed (inline code)
     local function box(v)
-    v = v == nil and "Unknown" or tostring(v)
-    v = v:gsub("`", "ˋ") -- ganti backtick biar gak nutup formatting
-    return string.format("`%s`", v)
+        v = v == nil and "Unknown" or tostring(v)
+        v = v:gsub("`", "ˋ") -- Replace backticks to avoid breaking formatting
+        return string.format("`%s`", v)
     end
 
-    
+    -- UPDATED: Enhanced embed with new data
     local embed = {
-    title = "🎣 New Catch: " .. fishName,
-    description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
-    color = 0x87CEEB,
-    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-    footer = { text = ".devlogic Fish Notifier" },
-    fields = {
-        { name = "Fish Name 🐟",   value = box(fishName),                              inline = false },
-        { name = "⚖️ Weight",      value = box(toKg(info.weight)),                     inline = true  },
-        { name = "🎲 Chance",       value = box(fmtChanceOneInFromNumber(info.chance)), inline = true  },
-        { name = "💎 Rarity",       value = box(getTierName(info.tier)),                inline = true  },
-        { name = "🧬 Mutation(s)",  value = box(formatMutations(info.mutations or info.mutation)), inline = false },
-        { name = "Fish ID",         value = box(info.id and tostring(info.id) or "Unknown"),       inline = true  },
+        title = (info.shiny and "✨ SHINY ✨ " or "🎣 ") .. "New Catch: " .. fishName,
+        description = string.format("**Player:** %s\n**Origin:** %s", LocalPlayer.Name, origin or "unknown"),
+        color = info.shiny and 0xFFD700 or 0x87CEEB, -- Gold for shiny, light blue for normal
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+        footer = { text = ".devlogic Fish Notifier v2" },
+        fields = {
+            { name = "Fish Name 🐟",   value = box(fishName),                              inline = false },
+            { name = "⚖️ Weight",      value = box(toKg(info.weight)),                     inline = true  },
+            { name = "🎲 Chance",       value = box(fmtChanceOneInFromNumber(info.chance)), inline = true  },
+            { name = "💎 Rarity",       value = box(getTierName(info.tier)),                inline = true  },
+            { name = "🧬 Mutation(s)",  value = box(formatMutations(info.mutations or info.mutation)), inline = false },
+            { name = "🎨 Variant",      value = box(formatVariant(info)),                   inline = false },
+            { name = "Fish ID",         value = box(info.id and tostring(info.id) or "Unknown"),       inline = true  },
+        }
     }
-}
 
+        -- Add UUID field if available
+    if info.uuid and info.uuid ~= "" then
+        table.insert(embed.fields, { name = "🆔 UUID", value = box(info.uuid), inline = true })
+    end
     
     if imageUrl then
         if CONFIG.USE_LARGE_IMAGE then
@@ -547,7 +654,7 @@ local function sendEmbed(info, origin)
     end
     
     sendWebhook({ 
-        username = ".devlogic Fish Notifier", 
+        username = ".devlogic Fish Notifier v2", 
         embeds = {embed} 
     })
     
@@ -558,7 +665,7 @@ local function sendEmbed(info, origin)
 end
 
 -- ===========================
--- CORE CORRELATION FUNCTION
+-- CORE CORRELATION FUNCTION (UPDATED)
 -- ===========================
 local function onCatchWindow()
     if onCatchWindowBusy then return end
@@ -572,7 +679,7 @@ local function onCatchWindow()
     for i = #lastInbound, 1, -1 do
         local hit = lastInbound[i]
         if now() - hit.t <= CONFIG.CATCH_WINDOW_SEC then
-            local info = decode_RE_FishCaught(hit.args)
+            local info = decodeInboundEvent(hit.name, hit.args)
             if info and (info.id or info.name) then
                 sendEmbed(info, "OnClientEvent:" .. hit.name)
                 finally()
@@ -587,7 +694,7 @@ local function onCatchWindow()
         for i = #lastInbound, 1, -1 do
             local hit = lastInbound[i]
             if now() - hit.t <= CONFIG.RARE_WINDOW_SEC then
-                local info = decode_RE_FishCaught(hit.args)
+                local info = decodeInboundEvent(hit.name, hit.args)
                 if info and (info.id or info.name) then
                     sendEmbed(info, "OnClientEvent(RARE):" .. hit.name)
                     finally()
@@ -612,7 +719,11 @@ local function onCatchWindow()
                         chance = meta.chance,
                         icon = meta.icon,
                         weight = a.Weight or a.Mass,
-                        mutations = a.Mutations or a.Mutation
+                        mutations = a.Mutations or a.Mutation,
+                        variantId = a.VariantId,
+                        variantSeed = a.VariantSeed,
+                        shiny = a.Shiny,
+                        uuid = a.UUID
                     }, "Backpack(RARE):" .. inst.Name)
                     finally()
                     return
@@ -706,7 +817,7 @@ function FishWebhookFeature:Init(guiControls)
     detectItemsRoot()
     buildLightIndex()
     
-    print("[FishWebhook] Initialized")
+    print("[FishWebhook] Initialized with new detector (RE/ObtainedNewFishNotification)")
     return true
 end
 
@@ -729,6 +840,7 @@ function FishWebhookFeature:Start(config)
     
     print("[FishWebhook] Started with URL:", webhookUrl:sub(1, 50) .. "...")
     print("[FishWebhook] Selected fish types:", HttpService:JSONEncode(selectedFishTypes))
+    print("[FishWebhook] Using detector: RE/ObtainedNewFishNotification")
     
     return true
 end
@@ -769,8 +881,8 @@ function FishWebhookFeature:TestWebhook(message)
     end
     
     sendWebhook({ 
-        username = ".devlogic Fish Notifier", 
-        content = message or "🐟 Webhook test from Fish-It script" 
+        username = ".devlogic Fish Notifier v2", 
+        content = message or "🐟 Webhook test from Fish-It script (Updated Detector)" 
     })
     return true
 end
@@ -782,7 +894,8 @@ function FishWebhookFeature:GetStatus()
         selectedFishTypes = selectedFishTypes,
         connectionsCount = #connections,
         lastInboundCount = #lastInbound,
-        recentAddsCount = next(recentAdds) and 1 or 0
+        recentAddsCount = next(recentAdds) and 1 or 0,
+        detector = "RE/ObtainedNewFishNotification"
     }
 end
 
@@ -797,6 +910,38 @@ function FishWebhookFeature:Cleanup()
     safeClear(scannedSet)
     safeClear(thumbCache)
     safeClear(sentCache)
+end
+
+-- ===========================
+-- DEBUG FUNCTIONS (NEW)
+-- ===========================
+function FishWebhookFeature:EnableInboundDebug()
+    CONFIG.DEBUG = true
+    log("Inbound debugging enabled")
+end
+
+function FishWebhookFeature:DisableInboundDebug()
+    CONFIG.DEBUG = false
+end
+
+function FishWebhookFeature:GetLastInbound()
+    return lastInbound
+end
+
+function FishWebhookFeature:SimulateFishCatch(testData)
+    -- For testing purposes - simulate a fish catch event
+    testData = testData or {
+        id = "69",
+        name = "Test Fish",
+        weight = 1.27,
+        tier = 5,
+        chance = 0.001,
+        shiny = true,
+        variantId = "Galaxy",
+        variantSeed = 1757126016
+    }
+    
+    sendEmbed(testData, "SIMULATED_TEST")
 end
 
 return FishWebhookFeature
