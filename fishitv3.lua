@@ -1,6 +1,6 @@
 -- Load Universal Scanner
 local UniversalScanner = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/universal-scanner.lua"
+    "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/fishitscan.lua"
 ))()
 
 -- WindUI Library
