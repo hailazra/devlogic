@@ -1041,33 +1041,6 @@ local shopbait_btn = TabShop:Button({
     end
 })
 
---- Other Item
-local shopother_sec = TabShop:Section({ 
-    Title = "Others",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
-local shopothers_ddm = TabShop:Dropdown({
-    Title = "Select Item",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = { "Category A" },
-    Multi = true,
-    AllowNone = true,
-    Callback = function(option) 
-        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
-    end
-})
-
-local shopother_btn = TabShop:Button({
-    Title = "Buy Item",
-    Desc = "",
-    Locked = false,
-    Callback = function()
-        print("clicked")
-    end
-})
-
 --- Weather
 local shopweather_sec = TabShop:Section({ 
     Title = "Weather",
