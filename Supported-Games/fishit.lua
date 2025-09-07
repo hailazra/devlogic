@@ -1464,6 +1464,31 @@ local webhookfish_tgl = TabMisc:Toggle({
     end
 })
 
+--- Vuln
+local vuln_sec = TabMisc:Section({ 
+    Title = "Vuln",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+local eqoxygentank_tgl = TabMisc:Toggle({
+    Title = "Equip Diving Gear",
+    Desc  = "Auto Equip Diving Gear",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
+
+local eqfishradar_tgl = TabMisc:Toggle({
+    Title = "Equip Fish Radar",
+    Desc  = "Auto Turn On Fish Radar",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
+
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
     Window:OnClose(function()
