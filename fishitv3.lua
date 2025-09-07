@@ -98,22 +98,30 @@ local Window = WindUI:CreateWindow({
 WindUI:SetFont("rbxasset://12187373592")
 
 -- [CUSTOM ICON CODE SAMA SEPERTI SEBELUMNYA - TIDAK BERUBAH]
+-- CUSTOM ICON INTEGRATION - Disable default open button
 Window:EditOpenButton({ Enabled = false })
 
+-- Services for custom icon
 local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
+-- Root UI yang lebih tahan reset (prioritas: gethui/CoreGui; fallback ke PlayerGui)
 local function getUiRoot()
     return (gethui and gethui()) or game:GetService("CoreGui") or PlayerGui
 end
 
+-- Reuse kalau sudah ada (hindari duplikasi saat re-exec)
 local iconGui = getUiRoot():FindFirstChild("DevLogicIconGui") or Instance.new("ScreenGui")
 iconGui.Name = "DevLogicIconGui"
 iconGui.IgnoreGuiInset = true
-iconGui.ResetOnSpawn = false
+iconGui.ResetOnSpawn = false   -- <- kunci: jangan hilang saat respawn
+
+-- (Opsional) proteksi GUI (beberapa executor support)
 pcall(function() if syn and syn.protect_gui then syn.protect_gui(iconGui) end end)
+
 iconGui.Parent = getUiRoot()
+
 
 local iconButton = Instance.new("ImageButton")
 iconButton.Name = "DevLogicOpenButton"
@@ -122,38 +130,64 @@ iconButton.Position = UDim2.new(0, 10, 0.5, -20)
 iconButton.BackgroundTransparency = 1
 iconButton.Image = "rbxassetid://73063950477508"
 iconButton.Parent = iconGui
-iconButton.Visible = false
+iconButton.Visible = false -- Start hidden because window is open
 
+-- Variable untuk track status
 local isWindowOpen = true
 local windowDestroyed = false
 
+-- Cleanup function untuk icon
 local function cleanupIcon()
     print("[GUI] Cleaning up custom icon...")
     windowDestroyed = true
-    if iconButton then iconButton:Destroy() iconButton = nil end
-    if iconGui then iconGui:Destroy() iconGui = nil end
+    
+    if iconButton then
+        iconButton:Destroy()
+        iconButton = nil
+    end
+    
+    if iconGui then
+        iconGui:Destroy()
+        iconGui = nil
+    end
+    
     print("[GUI] Icon cleanup completed")
 end
+
+-- Make cleanup globally available
 _G.DevLogicIconCleanup = cleanupIcon
 
+-- Fungsi toggle window
 local function toggleWindow()
-    if windowDestroyed then return end
+    if windowDestroyed then
+        print("Window already destroyed, cannot toggle")
+        return
+    end
+    
+    print("Toggling window...") -- Debug
+    
     if isWindowOpen then
         local success = pcall(function() Window:Close() end)
         if success then
             iconButton.Visible = true
             isWindowOpen = false
+            print("Window closed, icon shown")
+        else
+            print("Failed to close window")
         end
     else
         local success = pcall(function() Window:Open() end)
         if success then
             iconButton.Visible = false
             isWindowOpen = true
+            print("Window opened, icon hidden")
+        else
+            print("Failed to open window")
         end
     end
 end
 
--- [DRAG SYSTEM CODE - SAMA SEPERTI SEBELUMNYA]
+-- IMPROVED DRAG SYSTEM
 local function makeDraggable(gui)
     local isDragging = false
     local dragStart = nil
@@ -162,19 +196,27 @@ local function makeDraggable(gui)
     local hasDraggedFar = false
     local dragStartTime = 0
     
+    -- Konstanta untuk kontrol drag
     local MIN_DRAG_DISTANCE = 8     
     local TOGGLE_MAX_DISTANCE = 5   
     local TOGGLE_MAX_TIME = 0.5     
 
     local function updateInput(input)
         if not isDragging or not dragStart then return end
+        
         local Delta = input.Position - dragStart
         dragDistance = math.sqrt(Delta.X^2 + Delta.Y^2)
-        if dragDistance > MIN_DRAG_DISTANCE then hasDraggedFar = true end
+        
+        if dragDistance > MIN_DRAG_DISTANCE then
+            hasDraggedFar = true
+        end
+        
         if hasDraggedFar then
             local Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + Delta.X, 
-                startPos.Y.Scale, startPos.Y.Offset + Delta.Y
+                startPos.X.Scale, 
+                startPos.X.Offset + Delta.X, 
+                startPos.Y.Scale, 
+                startPos.Y.Offset + Delta.Y
             )
             gui.Position = Position
         end
@@ -192,20 +234,32 @@ local function makeDraggable(gui)
             startPos = gui.Position
             dragStartTime = tick()
             
-            if inputChangedConnection then inputChangedConnection:Disconnect() end
-            if inputEndedConnection then inputEndedConnection:Disconnect() end
+            if inputChangedConnection then
+                inputChangedConnection:Disconnect()
+            end
+            if inputEndedConnection then
+                inputEndedConnection:Disconnect()
+            end
             
             inputEndedConnection = input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     local dragEndTime = tick()
                     local dragDuration = dragEndTime - dragStartTime
+                    
                     isDragging = false
+                    
                     local isClick = (dragDistance < TOGGLE_MAX_DISTANCE) and 
-                                  (dragDuration < TOGGLE_MAX_TIME) and (not hasDraggedFar)
+                                  (dragDuration < TOGGLE_MAX_TIME) and 
+                                  (not hasDraggedFar)
+                    
                     if isClick then
+                        print("Detected CLICK - Toggling window")
                         wait(0.1)
                         toggleWindow()
+                    else
+                        print("Detected DRAG - No toggle")
                     end
+                    
                     if inputChangedConnection then
                         inputChangedConnection:Disconnect()
                         inputChangedConnection = nil
@@ -221,7 +275,9 @@ local function makeDraggable(gui)
 
     gui.InputChanged:Connect(function(input)
         if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            if isDragging then updateInput(input) end
+            if isDragging then
+                updateInput(input)
+            end
         end
     end)
     
@@ -229,6 +285,7 @@ local function makeDraggable(gui)
         if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
             if isDragging then
                 isDragging = false
+                
                 if inputChangedConnection then
                     inputChangedConnection:Disconnect()
                     inputChangedConnection = nil
@@ -242,11 +299,14 @@ local function makeDraggable(gui)
     end)
 end
 
+-- Apply drag system ke icon
 makeDraggable(iconButton)
 
+-- Monitor WindUI visibility
 local lastVisible = nil
 RunService.Heartbeat:Connect(function()
     if windowDestroyed then return end
+    
     local windUIFrame = PlayerGui:FindFirstChild("WindUI")
     if windUIFrame then
         local mainFrame = windUIFrame:FindFirstChild("Frame") or windUIFrame:FindFirstChild("Main")
@@ -263,6 +323,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+-- Override Window methods
 if Window.Toggle then
     local originalToggle = Window.Toggle
     Window.Toggle = function(self)
@@ -298,6 +359,8 @@ if Window.Open then
         return result
     end
 end
+
+-- END CUSTOM ICON INTEGRATION
 
 Window:Tag({ Title = "v0.0.0", Color = Color3.fromHex("#000000") })
 Window:Tag({ Title = "Dev Version", Color = Color3.fromHex("#000000") })
