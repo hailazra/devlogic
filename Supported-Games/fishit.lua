@@ -42,7 +42,8 @@ local FEATURE_URLS = {
     AutoBuyWeather     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyweather.lua",
     AutoBuyBait        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuybait.lua",
     AutoBuyRod         = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyrod.lua",
-    AutoTeleportEvent  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportevent.lua"
+    AutoTeleportEvent  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportevent.lua",
+    AutoGearOxyRadar   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autogearoxyradar.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -1471,22 +1472,69 @@ local vuln_sec = TabMisc:Section({
     TextSize = 17, -- Default Size
 })
 
+local autoGearFeature = nil
+local oxygenOn = false
+local radarOn  = false
+
 local eqoxygentank_tgl = TabMisc:Toggle({
     Title = "Equip Diving Gear",
     Desc  = "Auto Equip Diving Gear",
     Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+    Callback = function(state)
+  print("Diving Gear toggle:", state)
+  oxygenOn = state
+  if state then
+    -- muat modul jika belum ada, lalu panggil Start sekali saja
+    if not autoGearFeature then
+      autoGearFeature = FeatureManager:LoadFeature("AutoGearOxyRadar")
+      if autoGearFeature and autoGearFeature.Start then
+        autoGearFeature:Start()      -- init & konfigurasi default
+      end
     end
+    -- nyalakan oxygen tank
+    if autoGearFeature and autoGearFeature.EnableOxygen then
+      autoGearFeature:EnableOxygen(true)
+    end
+  else
+    -- matikan oxygen tank
+    if autoGearFeature and autoGearFeature.EnableOxygen then
+      autoGearFeature:EnableOxygen(false)
+    end
+  end
+  -- hentikan modul jika kedua toggle mati
+  if autoGearFeature and (not oxygenOn) and (not radarOn) and autoGearFeature.Stop then
+    autoGearFeature:Stop()
+  end
+end
+
 })
 
 local eqfishradar_tgl = TabMisc:Toggle({
     Title = "Equip Fish Radar",
     Desc  = "Auto Turn On Fish Radar",
     Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+    Callback = function(state)
+  print("Fish Radar toggle:", state)
+  radarOn = state
+  if state then
+    if not autoGearFeature then
+      autoGearFeature = FeatureManager:LoadFeature("AutoGearOxyRadar")
+      if autoGearFeature and autoGearFeature.Start then
+        autoGearFeature:Start()
+      end
     end
+    if autoGearFeature and autoGearFeature.EnableRadar then
+      autoGearFeature:EnableRadar(true)
+    end
+  else
+    if autoGearFeature and autoGearFeature.EnableRadar then
+      autoGearFeature:EnableRadar(false)
+    end
+  end
+  if autoGearFeature and (not oxygenOn) and (not radarOn) and autoGearFeature.Stop then
+    autoGearFeature:Stop()
+  end
+end
 })
 
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
