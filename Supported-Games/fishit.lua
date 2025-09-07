@@ -1478,7 +1478,7 @@ local radarOn  = false
 
 local eqoxygentank_tgl = TabMisc:Toggle({
     Title = "Equip Diving Gear",
-    Desc  = "Auto Equip Diving Gear",
+    Desc  = "No Need have Diving Gear",
     Default = false,
     Callback = function(state)
   print("Diving Gear toggle:", state)
@@ -1510,8 +1510,8 @@ end
 })
 
 local eqfishradar_tgl = TabMisc:Toggle({
-    Title = "Equip Fish Radar",
-    Desc  = "Auto Turn On Fish Radar",
+    Title = "Enable Fish Radar",
+    Desc  = "No Need have Fish Radar",
     Default = false,
     Callback = function(state)
   print("Fish Radar toggle:", state)
