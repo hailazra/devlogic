@@ -1,7 +1,6 @@
 --========================================================
--- Feature: AutoTeleportEvent (Patched & Fixed)
+-- Feature: AutoTeleportEvent (Patched)
 -- Lifecycle: Init(gui?), Start(config?), Stop(), Cleanup()
--- Fixes: Return home when no events available, proper priority handling
 --========================================================
 
 local AutoTeleportEvent = {}
@@ -118,37 +117,23 @@ local function collectActiveEvents()
     return list
 end
 
--- FIX: Improved event selection logic
 local function chooseBestActiveEvent()
     local actives = collectActiveEvents()
     if #actives == 0 then return nil end
 
-    -- PERBAIKAN: Hanya pilih event yang ada dalam selectedRank
-    -- Jika user tidak memilih event apapun, jangan auto-pilih event
-    if next(selectedRank) == nil then
-        -- Tidak ada event yang dipilih user, return nil
-        return nil
-    end
-
-    -- Filter hanya event yang dipilih user
-    local filteredActives = {}
+    -- ranking: jika user memilih, utamakan yang ada di selectedRank (angka makin kecil makin prioritas).
+    -- kalau user tidak memilih apa pun, semua rank = inf => tetap pilih yang pertama hasil sort tiebreaker.
     for _, a in ipairs(actives) do
-        if selectedRank[a.nameKey] then
-            a.rank = selectedRank[a.nameKey]
-            table.insert(filteredActives, a)
-        end
+        a.rank = selectedRank[a.nameKey] or math.huge
     end
 
-    if #filteredActives == 0 then return nil end
-
-    -- Sort berdasarkan prioritas (rank lebih kecil = prioritas tinggi)
-    table.sort(filteredActives, function(a, b)
+    table.sort(actives, function(a, b)
         if a.rank ~= b.rank then return a.rank < b.rank end
-        -- tiebreaker: nama (stabil)
+        -- tiebreaker kedua: nama (stabil)
         return a.name < b.name
     end)
 
-    return filteredActives[1]
+    return actives[1]
 end
 
 --========== Teleport / Return ==========
@@ -166,17 +151,13 @@ local function teleportToTarget(target)
     return true
 end
 
--- FIX: Improved return logic
 local function restorePositionIfNeeded()
-    if not returnCFrame then return false end
-    
+    if not returnCFrame then return end
     local _, hrp = ensureCharacter()
     if hrp then
         setCFrameSafely(hrp, returnCFrame.Position, returnCFrame.Position + returnCFrame.LookVector)
-        returnCFrame = nil -- Clear after returning
-        return true
     end
-    return false
+    returnCFrame = nil
 end
 
 local function maintainHover()
@@ -192,23 +173,17 @@ local function maintainHover()
     end
 end
 
--- FIX: Better event gone handling
+-- Dipanggil ketika model event target hilang
 local function onCurrentEventGone()
     currentTarget = nil
-    
-    -- Stabilisasi sebelum evaluasi
+    -- beri 1 tick utk stabilisasi, lalu evaluasi
     task.defer(function()
         task.wait(0.1)
-        
-        if not running then return end -- Skip jika sudah di-stop
-        
         local nextBest = chooseBestActiveEvent()
         if nextBest then
-            -- Ada event lain yang dipilih user dan sedang aktif
             teleportToTarget(nextBest)
             currentTarget = nextBest
         else
-            -- PERBAIKAN: Tidak ada event yang cocok/dipilih -> pulang ke home
             restorePositionIfNeeded()
         end
     end)
@@ -234,32 +209,26 @@ local function attachWorkspaceListeners()
     end)
 end
 
--- FIX: Improved safety net loop
 local function startSafetyNetLoop()
     if hbConn then hbConn:Disconnect() end
     local lastSanity = 0
     hbConn = RunService.Heartbeat:Connect(function()
         if not running then return end
 
-        -- Safety check setiap 1.0 detik
+        -- Safety: 1x per 1.0 detik cek apakah target masih ada
         local now = os.clock()
         if now - lastSanity > 1.0 then
             lastSanity = now
-            
-            -- Cek apakah target masih valid
-            if currentTarget then
-                if not currentTarget.model or not currentTarget.model:IsDescendantOf(propsFolder or Workspace) then
-                    onCurrentEventGone()
-                    return
-                end
+            if currentTarget and (not currentTarget.model or not currentTarget.model:IsDescendantOf(propsFolder)) then
+                onCurrentEventGone()
+                return
             end
         end
 
-        -- PERBAIKAN: Logic untuk memilih target
+        -- Prioritas bisa berubah (mis. user ganti dropdown) -> retarget ringan
         local best = chooseBestActiveEvent()
-        
         if not best then
-            -- Tidak ada event yang sesuai pilihan user
+            -- tidak ada event aktif sama sekali -> pulang jika pernah teleport
             if currentTarget then
                 currentTarget = nil
                 restorePositionIfNeeded()
@@ -267,7 +236,6 @@ local function startSafetyNetLoop()
             return
         end
 
-        -- Ada event yang cocok
         if (not currentTarget) or (currentTarget.model ~= best.model) then
             teleportToTarget(best)
             currentTarget = best
@@ -318,13 +286,14 @@ function AutoTeleportEvent:Start(config)
         end
     end
 
-    -- PERBAIKAN: Hanya pilih target awal jika user sudah memilih event
+    -- Pilih target awal (kalau ada)
     local best = chooseBestActiveEvent()
     if best then
         teleportToTarget(best)
         currentTarget = best
+    else
+        -- Tidak ada event aktif: tidak apa-apa; tinggal menunggu via listeners / loop
     end
-    -- Jika tidak ada event yang dipilih/aktif, tidak melakukan apa-apa
 
     startSafetyNetLoop()
     return true
@@ -335,13 +304,15 @@ function AutoTeleportEvent:Stop()
     running = false
 
     if hbConn then hbConn:Disconnect(); hbConn = nil end
-    
-    -- PERBAIKAN: Selalu pulang saat di-stop manual
+    -- Saat dihentikan manual, selalu pulang bila sudah sempat teleport
     if currentTarget then
         currentTarget = nil
+        restorePositionIfNeeded()
+    else
+        -- Jika tidak punya target tapi masih ada returnCFrame (misal target hilang tepat saat Stop),
+        -- tetap kembalikan.
+        restorePositionIfNeeded()
     end
-    -- Pulang ke home jika ada returnCFrame
-    restorePositionIfNeeded()
 
     return true
 end
@@ -358,9 +329,6 @@ function AutoTeleportEvent:Cleanup()
     table.clear(selectedPriorityList)
     table.clear(selectedRank)
     table.clear(eventsIndexByNorm)
-    
-    -- Clear return position saat cleanup
-    returnCFrame = nil
 
     return true
 end
@@ -392,22 +360,6 @@ function AutoTeleportEvent:SetSelectedEvents(selected)
             end
         end
     end
-    
-    -- PERBAIKAN: Re-evaluasi target setelah mengubah pilihan (opsional untuk fleksibilitas)
-    if running then
-        task.defer(function()
-            local best = chooseBestActiveEvent()
-            if best and (not currentTarget or currentTarget.model ~= best.model) then
-                teleportToTarget(best)
-                currentTarget = best
-            elseif not best and currentTarget then
-                -- Tidak ada event aktif -> pulang ke home
-                currentTarget = nil
-                restorePositionIfNeeded()
-            end
-        end)
-    end
-    
     return true
 end
 
@@ -430,12 +382,11 @@ end
 -- (opsional) Status untuk debug ringan
 function AutoTeleportEvent:Status()
     return {
-        running       = running,
-        hover         = hoverHeight,
-        hasHome       = returnCFrame ~= nil,
-        hasTarget     = currentTarget ~= nil,
-        targetName    = currentTarget and currentTarget.name or nil,
-        selectedCount = #selectedPriorityList
+        running    = running,
+        hover      = hoverHeight,
+        hasHome    = returnCFrame ~= nil,
+        hasTarget  = currentTarget ~= nil,
+        targetName = currentTarget and currentTarget.name or nil
     }
 end
 
