@@ -43,7 +43,8 @@ local FEATURE_URLS = {
     AutoBuyBait        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuybait.lua",
     AutoBuyRod         = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyrod.lua",
     AutoTeleportEvent  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportevent.lua",
-    AutoGearOxyRadar   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autogearoxyradar.lua"
+    AutoGearOxyRadar   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autogearoxyradar.lua",
+    AntiAfk            = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/antiafk.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -445,6 +446,28 @@ local DiscordBtn = TabHome:Button({
             setclipboard("https://discord.gg/3AzvRJFT3M") -- ganti invite kamu
         end
     end
+})
+
+local antiafkFeature = nil
+
+local antiafk_tgl = TabHome:Toggle({
+    Title = "Anti AFK",
+    Default = false,
+    Callback = function(state) 
+   if state then
+      if not antiafkFeature then
+        antiafkFeature = FeatureManager:LoadFeature("AntiAfk")
+      end
+      if antiafkFeature and antiafkFeature.Start then
+        antiafkFeature:Start()
+      else
+        antiafk_tgl:Set(false)
+        WindUI:Notify({ Title="Failed", Content="Could not start AntiAfk", Icon="x", Duration=3 })
+      end
+    else
+      if antiafkFeature and antiafkFeature.Stop then antiafkFeature:Stop() end
+    end
+  end
 })
 
 --- === Main === ---
