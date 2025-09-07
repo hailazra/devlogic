@@ -1,51 +1,49 @@
 --========================================================
--- Feature: AutoTeleportEvent (Patched)
--- Lifecycle: Init(gui?), Start(config?), Stop(), Cleanup()
+-- Feature: AutoTeleportEvent (Patched v2)
 --========================================================
 
 local AutoTeleportEvent = {}
 AutoTeleportEvent.__index = AutoTeleportEvent
 
---========== Services ==========
-local Players            = game:GetService("Players")
-local ReplicatedStorage  = game:GetService("ReplicatedStorage")
-local RunService         = game:GetService("RunService")
-local Workspace          = game:GetService("Workspace")
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
+local Workspace         = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 
---========== Internal State ==========
-local running              = false
-local hbConn               = nil      -- safety-net polling (coarse)
-local charConn             = nil      -- re-apply hover on respawn
-local propsRemovedConn     = nil      -- event-driven return
-local propsAddedConn       = nil      -- re-attach when Props recreated
-local propsFolder          = nil      -- Workspace.Props
-local eventsFolder         = nil      -- ReplicatedStorage.Events
+-- ===== State =====
+local running          = false
+local hbConn           = nil         -- polling ringan
+local charConn         = nil
+local propsAddedConn   = nil         -- jika Props di-recreate
+local propsFolder      = nil         -- Workspace.Props
+local eventsFolder     = nil         -- ReplicatedStorage.Events
 
-local selectedPriorityList = {}       -- array of normalized names (keeps order)
-local selectedRank         = {}       -- map: nameNorm -> rank (1..n)
-local hoverHeight          = 15       -- default hover (lebih rendah)
-local returnCFrame         = nil      -- saved home position
-local currentTarget        = nil      -- { model=Model, name=string, nameKey=string, pos=Vector3 }
+local selectedPriorityList = {}      -- <<< urutan prioritas (array)
+local selectedSet           = {}     -- untuk cocokkan cepat (dict)
+local hoverHeight           = 15
+local returnCFrame          = nil
+local currentTarget         = nil     -- { model, name, nameKey, pos }
 
-local eventsIndexByNorm    = {}       -- map: normName -> true (set nama event yg valid)
+-- Cache nama event valid (dari ReplicatedStorage.Events)
+local validEventName = {}            -- set of normName
 
---========== Utils ==========
-local function waitChild(parent, name, timeout)
-    local t0 = os.clock()
-    local obj = parent:FindFirstChild(name)
-    while not obj and (os.clock() - t0) < (timeout or 5) do
-        local ev; ev = parent.ChildAdded:Wait()
-        if ev and ev.Name == name then obj = ev end
-    end
-    return obj
-end
-
+-- ===== Utils =====
 local function normName(s)
     s = string.lower(s or "")
     s = s:gsub("%W", "")
     return s
+end
+
+local function waitChild(parent, name, timeout)
+    local t0 = os.clock()
+    local obj = parent:FindFirstChild(name)
+    while not obj and (os.clock() - t0) < (timeout or 5) do
+        parent.ChildAdded:Wait()
+        obj = parent:FindFirstChild(name)
+    end
+    return obj
 end
 
 local function ensureCharacter()
@@ -62,20 +60,18 @@ local function setCFrameSafely(hrp, targetPos, keepLookAt)
     hrp.CFrame = CFrame.lookAt(targetPos, Vector3.new(look.X, targetPos.Y, look.Z))
 end
 
---========== Event Catalog ==========
+-- ===== Index Events from ReplicatedStorage.Events =====
 local function indexEvents()
-    table.clear(eventsIndexByNorm)
+    table.clear(validEventName)
     if not eventsFolder then return end
-
     local function scan(folder)
         for _, child in ipairs(folder:GetChildren()) do
             if child:IsA("ModuleScript") then
                 local ok, data = pcall(require, child)
                 if ok and type(data) == "table" and data.Name then
-                    eventsIndexByNorm[normName(data.Name)] = true
+                    validEventName[normName(data.Name)] = true
                 end
-                -- tetap index berdasarkan nama module juga
-                eventsIndexByNorm[normName(child.Name)] = true
+                validEventName[normName(child.Name)] = true
             elseif child:IsA("Folder") then
                 scan(child)
             end
@@ -84,68 +80,112 @@ local function indexEvents()
     scan(eventsFolder)
 end
 
---========== Targeting ==========
+-- ===== Resolve Model Pivot =====
 local function resolveModelPivotPos(model)
-    -- Posisikan tepat di area event: pakai Pivot
-    local ok, pivot = pcall(function() return model:GetPivot() end)
-    if ok and typeof(pivot) == "CFrame" then
-        return pivot.Position
-    end
-    -- fallback lama
-    local ok2, cf = pcall(function() return model.WorldPivot end)
-    if ok2 and typeof(cf) == "CFrame" then
-        return cf.Position
-    end
+    local ok, cf = pcall(function() return model:GetPivot() end)
+    if ok and typeof(cf) == "CFrame" then return cf.Position end
+    local ok2, cf2 = pcall(function() return model.WorldPivot end)
+    if ok2 and typeof(cf2) == "CFrame" then return cf2.Position end
     return nil
 end
 
+-- ===== Collect Active Events (recursive di dalam Props & sub-Props) =====
 local function collectActiveEvents()
-    if not propsFolder then return {} end
-    local list = {}
-    for _, child in ipairs(propsFolder:GetChildren()) do
-        if child:IsA("Model") then
-            local nmKey = normName(child.Name)
-            -- hanya anggap sebagai event jika namanya cocok event catalog (lebih aman)
-            if eventsIndexByNorm[nmKey] then
-                local pos = resolveModelPivotPos(child)
+    local out = {}
+    if not propsFolder then return out end
+
+    -- ambil semua Model di bawah Workspace.Props (deep)
+    for _, desc in ipairs(propsFolder:GetDescendants()) do
+        if desc:IsA("Model") then
+            local model = desc
+            -- cocokan nama model atau parent folder dengan daftar event valid
+            local mKey  = normName(model.Name)
+            local pKey  = model.Parent and normName(model.Parent.Name) or nil
+
+            local isEventish =
+                (validEventName[mKey] == true) or
+                (pKey and validEventName[pKey] == true)
+
+            if isEventish then
+                local pos = resolveModelPivotPos(model)
                 if pos then
-                    table.insert(list, { model = child, name = child.Name, nameKey = nmKey, pos = pos })
+                    -- pilih nama “representatif” untuk prioritas: prefer parent folder (Shark Hunt / Ghost Shark)
+                    local repName = model.Parent and model.Parent.Name or model.Name
+                    table.insert(out, {
+                        model   = model,
+                        name    = repName,
+                        nameKey = normName(repName),
+                        pos     = pos
+                    })
                 end
             end
         end
     end
-    return list
+
+    return out
 end
 
+-- ===== Match terhadap pilihan user =====
+local function matchesSelection(nameKey)
+    if #selectedPriorityList == 0 then return true end -- user tidak memilih apa-apa -> semua boleh
+    -- “contains” match dua arah supaya toleran variasi nama
+    for _, selKey in ipairs(selectedPriorityList) do
+        if nameKey:find(selKey, 1, true) or selKey:find(nameKey, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function rankOf(nameKey)
+    for i, selKey in ipairs(selectedPriorityList) do
+        if nameKey:find(selKey, 1, true) or selKey:find(nameKey, 1, true) then
+            return i
+        end
+    end
+    return math.huge
+end
+
+-- ===== Choose Best =====
 local function chooseBestActiveEvent()
     local actives = collectActiveEvents()
     if #actives == 0 then return nil end
 
-    -- ranking: jika user memilih, utamakan yang ada di selectedRank (angka makin kecil makin prioritas).
-    -- kalau user tidak memilih apa pun, semua rank = inf => tetap pilih yang pertama hasil sort tiebreaker.
+    -- filter sesuai pilihan user jika ada
+    local filtered = {}
+    if #selectedPriorityList > 0 then
+        for _, a in ipairs(actives) do
+            if matchesSelection(a.nameKey) then
+                table.insert(filtered, a)
+            end
+        end
+        actives = filtered
+        if #actives == 0 then
+            -- tidak ada event TERPILIH yang aktif -> jangan teleport ke event lain
+            return nil
+        end
+    end
+
     for _, a in ipairs(actives) do
-        a.rank = selectedRank[a.nameKey] or math.huge
+        a.rank = rankOf(a.nameKey)
     end
 
     table.sort(actives, function(a, b)
         if a.rank ~= b.rank then return a.rank < b.rank end
-        -- tiebreaker kedua: nama (stabil)
+        -- stabil
         return a.name < b.name
     end)
 
     return actives[1]
 end
 
---========== Teleport / Return ==========
+-- ===== Teleport / Return =====
 local function teleportToTarget(target)
     local _, hrp = ensureCharacter()
     if not hrp then return false, "NO_HRP" end
-
-    -- Simpan home hanya sekali saat pertama kali teleport
     if not returnCFrame then
-        returnCFrame = hrp.CFrame
+        returnCFrame = hrp.CFrame -- simpan HARD posisi sekarang sebelum teleport pertama
     end
-
     local tpPos = target.pos + Vector3.new(0, hoverHeight, 0)
     setCFrameSafely(hrp, tpPos)
     return true
@@ -173,65 +213,29 @@ local function maintainHover()
     end
 end
 
--- Dipanggil ketika model event target hilang
-local function onCurrentEventGone()
-    currentTarget = nil
-    -- beri 1 tick utk stabilisasi, lalu evaluasi
-    task.defer(function()
-        task.wait(0.1)
-        local nextBest = chooseBestActiveEvent()
-        if nextBest then
-            teleportToTarget(nextBest)
-            currentTarget = nextBest
-        else
-            restorePositionIfNeeded()
-        end
-    end)
-end
-
---========== Listeners / Loop ==========
-local function attachPropsListeners()
-    if propsRemovedConn then propsRemovedConn:Disconnect() end
-    propsRemovedConn = propsFolder.ChildRemoved:Connect(function(child)
-        if currentTarget and child == currentTarget.model then
-            onCurrentEventGone()
-        end
-    end)
-end
-
-local function attachWorkspaceListeners()
-    if propsAddedConn then propsAddedConn:Disconnect() end
-    propsAddedConn = Workspace.ChildAdded:Connect(function(c)
-        if c.Name == "Props" then
-            propsFolder = c
-            attachPropsListeners()
-        end
-    end)
-end
-
-local function startSafetyNetLoop()
+-- ===== Loop =====
+local function startLoop()
     if hbConn then hbConn:Disconnect() end
-    local lastSanity = 0
+    local lastTick = 0
     hbConn = RunService.Heartbeat:Connect(function()
         if not running then return end
-
-        -- Safety: 1x per 1.0 detik cek apakah target masih ada
         local now = os.clock()
-        if now - lastSanity > 1.0 then
-            lastSanity = now
-            if currentTarget and (not currentTarget.model or not currentTarget.model:IsDescendantOf(propsFolder)) then
-                onCurrentEventGone()
-                return
-            end
+        if now - lastTick < 0.25 then -- throttle scan Workspace
+            maintainHover()
+            return
         end
+        lastTick = now
 
-        -- Prioritas bisa berubah (mis. user ganti dropdown) -> retarget ringan
+        -- pilih target terbaik
         local best = chooseBestActiveEvent()
+
         if not best then
-            -- tidak ada event aktif sama sekali -> pulang jika pernah teleport
+            -- tidak ada event terpilih (atau tidak ada event sama sekali)
             if currentTarget then
                 currentTarget = nil
-                restorePositionIfNeeded()
+            end
+            if returnCFrame then
+                restorePositionIfNeeded() -- <<< pulang otomatis walau currentTarget sudah nil
             end
             return
         end
@@ -245,16 +249,12 @@ local function startSafetyNetLoop()
     end)
 end
 
---========== Lifecycle ==========
-function AutoTeleportEvent:Init(guiHandles)
-    -- Resolve folders
+-- ===== Lifecycle =====
+function AutoTeleportEvent:Init(gui)
     propsFolder  = Workspace:FindFirstChild("Props") or waitChild(Workspace, "Props", 5)
     eventsFolder = ReplicatedStorage:FindFirstChild("Events") or waitChild(ReplicatedStorage, "Events", 5)
-
-    -- Index katalog event
     indexEvents()
 
-    -- Robust ke respawn: re-apply hover ke target aktif
     if charConn then charConn:Disconnect() end
     charConn = LocalPlayer.CharacterAdded:Connect(function()
         if running and currentTarget then
@@ -265,9 +265,12 @@ function AutoTeleportEvent:Init(guiHandles)
         end
     end)
 
-    -- Listener Props & Workspace
-    if propsFolder then attachPropsListeners() end
-    attachWorkspaceListeners()
+    if propsAddedConn then propsAddedConn:Disconnect() end
+    propsAddedConn = Workspace.ChildAdded:Connect(function(c)
+        if c.Name == "Props" then
+            propsFolder = c
+        end
+    end)
 
     return true
 end
@@ -276,88 +279,74 @@ function AutoTeleportEvent:Start(config)
     if running then return true end
     running = true
 
-    -- Konsumsi config
     if config then
         if type(config.hoverHeight) == "number" then
             hoverHeight = math.clamp(config.hoverHeight, 5, 100)
         end
         if type(config.selectedEvents) ~= "nil" then
-            self:SetSelectedEvents(config.selectedEvents)
+            self:SetSelectedEvents(config.selectedEvents) -- terima array (prioritas) atau dict
         end
     end
 
-    -- Pilih target awal (kalau ada)
+    -- coba target awal
     local best = chooseBestActiveEvent()
     if best then
         teleportToTarget(best)
         currentTarget = best
-    else
-        -- Tidak ada event aktif: tidak apa-apa; tinggal menunggu via listeners / loop
     end
 
-    startSafetyNetLoop()
+    startLoop()
     return true
 end
 
 function AutoTeleportEvent:Stop()
     if not running then return true end
     running = false
-
     if hbConn then hbConn:Disconnect(); hbConn = nil end
-    -- Saat dihentikan manual, selalu pulang bila sudah sempat teleport
-    if currentTarget then
-        currentTarget = nil
-        restorePositionIfNeeded()
-    else
-        -- Jika tidak punya target tapi masih ada returnCFrame (misal target hilang tepat saat Stop),
-        -- tetap kembalikan.
+
+    -- saat stop, selalu pulang kalau pernah teleport
+    if returnCFrame then
         restorePositionIfNeeded()
     end
-
+    currentTarget = nil
     return true
 end
 
 function AutoTeleportEvent:Cleanup()
     self:Stop()
-    if charConn         then charConn:Disconnect();         charConn = nil end
-    if propsRemovedConn then propsRemovedConn:Disconnect(); propsRemovedConn = nil end
-    if propsAddedConn   then propsAddedConn:Disconnect();   propsAddedConn = nil end
-
+    if charConn       then charConn:Disconnect();       charConn = nil end
+    if propsAddedConn then propsAddedConn:Disconnect(); propsAddedConn = nil end
     propsFolder  = nil
     eventsFolder = nil
-
+    table.clear(validEventName)
     table.clear(selectedPriorityList)
-    table.clear(selectedRank)
-    table.clear(eventsIndexByNorm)
-
+    table.clear(selectedSet)
     return true
 end
 
---========== Setters ==========
--- selected: bisa array (prioritas sesuai urutan) atau dict/set {["Admin - Black Hole"]=true, ...}
+-- ===== Setters =====
+-- selected bisa: array (prioritas) **atau** dict/set {["Shark Hunt"]=true, ["Ghost Shark"]=true}
 function AutoTeleportEvent:SetSelectedEvents(selected)
     table.clear(selectedPriorityList)
-    table.clear(selectedRank)
+    table.clear(selectedSet)
 
     if type(selected) == "table" then
         if #selected > 0 then
-            -- array
-            for i, v in ipairs(selected) do
+            -- ARRAY: pertahankan urutan prioritas
+            for _, v in ipairs(selected) do
                 local key = normName(v)
-                selectedPriorityList[i] = key
-                selectedRank[key] = i
+                table.insert(selectedPriorityList, key)
+                selectedSet[key] = true
             end
         else
-            -- dict/set
-            local temp = {}
+            -- DICT/SET: tanpa urutan → pakai set saja
             for k, on in pairs(selected) do
-                if on then table.insert(temp, normName(k)) end
+                if on then
+                    local key = normName(k)
+                    selectedSet[key] = true
+                end
             end
-            table.sort(temp)
-            for i, key in ipairs(temp) do
-                selectedPriorityList[i] = key
-                selectedRank[key] = i
-            end
+            -- biarkan selectedPriorityList kosong → artinya "boleh semua"
         end
     end
     return true
@@ -366,7 +355,6 @@ end
 function AutoTeleportEvent:SetHoverHeight(h)
     if type(h) == "number" then
         hoverHeight = math.clamp(h, 5, 100)
-        -- kalau sedang hover, update segera
         if running and currentTarget then
             local _, hrp = ensureCharacter()
             if hrp then
@@ -379,18 +367,15 @@ function AutoTeleportEvent:SetHoverHeight(h)
     return false
 end
 
--- (opsional) Status untuk debug ringan
 function AutoTeleportEvent:Status()
     return {
         running    = running,
         hover      = hoverHeight,
         hasHome    = returnCFrame ~= nil,
-        hasTarget  = currentTarget ~= nil,
-        targetName = currentTarget and currentTarget.name or nil
+        target     = currentTarget and currentTarget.name or nil
     }
 end
 
---========== Factory ==========
 function AutoTeleportEvent.new()
     local self = setmetatable({}, AutoTeleportEvent)
     return self
