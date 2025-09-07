@@ -518,7 +518,7 @@ local eventtele_sec = TabMain:Section({
 })
 
 local eventteleFeature     = nil
-local selectedEventsSet    = {}
+local selectedEventsArray = {}
 
 local AVAIL_EVENT = {
     "Shark Hunt", "Worm Hunt", "Ghost Shark Hunt", "Admin - Blackhole", "Admin - Ghost Worm", "Admin - Meteor Rain",
@@ -537,14 +537,9 @@ local eventtele_ddm = TabMain:Dropdown({
     Multi = true,
     AllowNone = true,
     Callback  = function(options)
-        selectedEventsSet = {}
-        for _, opt in ipairs(options) do
-            if type(opt) == "string" and opt ~= "" then
-                selectedEventsSet[opt] = true
-            end
-        end
+        selectedEventsArray = options or {}
         if eventteleFeature and eventteleFeature.SetSelectedEvents then
-            eventteleFeature:SetSelectedEvents(selectedEventsSet)
+            eventteleFeature:SetSelectedEvents(selectedEventsArray) -- <<< array, bukan set
         end
     end
 })
@@ -554,33 +549,21 @@ local eventtele_tgl = TabMain:Toggle({
     Desc  = "Auto Teleport to Event when available",
     Default = false,
     Callback = function(state) 
-    if state then
-            -- Muat modul jika belum
+     if state then
             if not eventteleFeature then
                 eventteleFeature = FeatureManager:LoadFeature("AutoTeleportEvent", {
                     dropdown = eventtele_ddm,
                     toggle   = eventtele_tgl
                 })
-                -- Jika modul punya daftar event, muat ke dropdown
-                if eventteleFeature and eventteleFeature.GetAvailableEvents then
-                    local names = eventteleFeature:GetAvailableEvents()
-                    if eventtele_ddm.Reload then
-                        eventtele_ddm:Reload(names)
-                    elseif eventtele_ddm.SetOptions then
-                        eventtele_ddm:SetOptions(names)
-                    end
-                end
             end
-
-            -- Mulai modul; jika tidak ada pilihan berarti tetap teleport ke event apa pun
             if eventteleFeature and eventteleFeature.Start then
-                eventteleFeature:Start({ selectedEvents = selectedEventsSet })
+                eventteleFeature:Start({
+                    selectedEvents = selectedEventsArray,  -- <<< array prioritas
+                    hoverHeight    = 12                   -- feel free adjust
+                })
             else
                 eventtele_tgl:Set(false)
-                WindUI:Notify({ Title="Failed",
-                                Content="Could not start AutoTeleportEvent",
-                                Icon="x",
-                                Duration=3 })
+                WindUI:Notify({ Title="Failed", Content="Could not start AutoTeleportEvent", Icon="x", Duration=3 })
             end
         else
             if eventteleFeature and eventteleFeature.Stop then eventteleFeature:Stop() end
