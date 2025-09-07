@@ -535,7 +535,9 @@ local eventtele_ddm = TabMain:Dropdown({
     Value = {},
     Multi = true,
     AllowNone = true,
-    selectedEventsSet = {}
+    Callback  = function(options)
+        
+        selectedEventsSet = {}
         for _, opt in ipairs(options) do
             if type(opt) == "string" and opt ~= "" then
                 selectedEventsSet[opt] = true
