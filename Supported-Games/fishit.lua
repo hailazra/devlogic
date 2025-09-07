@@ -41,7 +41,8 @@ local FEATURE_URLS = {
     FishWebhook        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/fishwebhook.lua",
     AutoBuyWeather     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyweather.lua",
     AutoBuyBait        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuybait.lua",
-    AutoBuyRod         = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyrod.lua"
+    AutoBuyRod         = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyrod.lua",
+    AutoTeleportEvent  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportevent.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -515,14 +516,34 @@ local eventtele_sec = TabMain:Section({
     TextSize = 17, -- Default Size
 })
 
+local eventteleFeature     = nil
+local selectedEventsSet    = {}
+
+local AVAIL_EVENT = {
+    "Shark Hunt", "Worm Hunt", "Ghost Shark Hunt", "Admin - Blackhole", "Admin - Ghost Worm", "Admin - Meteor Rain",
+    "Admin - Shocked" 
+}
+
+local AVAIL_EVENT_OPTIONS = {}
+for _, event in ipairs(AVAIL_EVENT) do
+    table.insert(AVAIL_EVENT_OPTIONS, event)
+end
+
 local eventtele_ddm = TabMain:Dropdown({
     Title = "Select Event",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = { "Category A" },
+    Values = AVAIL_EVENT_OPTIONS,
+    Value = {},
     Multi = true,
     AllowNone = true,
-    Callback = function(option) 
-        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    selectedEventsSet = {}
+        for _, opt in ipairs(options) do
+            if type(opt) == "string" and opt ~= "" then
+                selectedEventsSet[opt] = true
+            end
+        end
+        if eventteleFeature and eventteleFeature.SetSelectedEvents then
+            eventteleFeature:SetSelectedEvents(selectedEventsSet)
+        end
     end
 })
 
@@ -531,7 +552,37 @@ local eventtele_tgl = TabMain:Toggle({
     Desc  = "Auto Teleport to Event when available",
     Default = false,
     Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+    if state then
+            -- Muat modul jika belum
+            if not eventteleFeature then
+                eventteleFeature = FeatureManager:LoadFeature("AutoTeleportEvent", {
+                    dropdown = eventtele_ddm,
+                    toggle   = eventtele_tgl
+                })
+                -- Jika modul punya daftar event, muat ke dropdown
+                if eventteleFeature and eventteleFeature.GetAvailableEvents then
+                    local names = eventteleFeature:GetAvailableEvents()
+                    if eventtele_ddm.Reload then
+                        eventtele_ddm:Reload(names)
+                    elseif eventtele_ddm.SetOptions then
+                        eventtele_ddm:SetOptions(names)
+                    end
+                end
+            end
+
+            -- Mulai modul; jika tidak ada pilihan berarti tetap teleport ke event apa pun
+            if eventteleFeature and eventteleFeature.Start then
+                eventteleFeature:Start({ selectedEvents = selectedEventsSet })
+            else
+                eventtele_tgl:Set(false)
+                WindUI:Notify({ Title="Failed",
+                                Content="Could not start AutoTeleportEvent",
+                                Icon="x",
+                                Duration=3 })
+            end
+        else
+            if eventteleFeature and eventteleFeature.Stop then eventteleFeature:Stop() end
+        end
     end
 })
 
