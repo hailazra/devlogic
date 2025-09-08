@@ -778,6 +778,24 @@ local enchant_tgl = TabAutomation:Toggle({
     end
 })
 
+local function preloadEnchantNames()
+    local names = {}
+    local enchFolder = ReplicatedStorage:FindFirstChild("Enchants")
+    if enchFolder then
+        for _,mod in ipairs(enchFolder:GetChildren()) do
+            if mod:IsA("ModuleScript") then
+                local ok, data = pcall(require, mod)
+                if ok and type(data)=="table" and data.Data and data.Data.Name then
+                    table.insert(names, data.Data.Name)
+                end
+            end
+        end
+    end
+    table.sort(names)
+    if enchant_ddm.Reload then enchant_ddm:Reload(names) end
+end
+preloadEnchantNames()
+
 --- Auto Gift
 local autogift_sec = TabAutomation:Section({ 
     Title = "Auto Gift",
