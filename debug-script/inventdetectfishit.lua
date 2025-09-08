@@ -1,85 +1,107 @@
 -- ===========================
--- inventoryDetector.lua
--- Raw detector for Inventory/Bag/Backpack
--- - Listen-only: no side effects
--- - Event-driven (Replion + InventoryController + Backpack)
+-- inventoryDetector_v2.lua
+-- Raw detector for Inventory/Bag/Backpack (listen-only)
+-- - Nunggu game.Loaded & LocalPlayer
+-- - Hook Replion + Constants + InventoryController (best-effort)
+-- - Tanpa operator/utility yang kadang bikin error di executor lama
 -- ===========================
 
 local inventoryDetector = {}
 inventoryDetector.__index = inventoryDetector
 
---// Services
+-- ======= Guard: pastikan game siap =======
+if not game:IsLoaded() then
+    pcall(function() game.Loaded:Wait() end)
+end
+
+-- ======= Services =======
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- Tunggu LocalPlayer (hindari nil index di awal)
+while not Players.LocalPlayer do task.wait() end
 local LocalPlayer = Players.LocalPlayer
 
---=====================================
--- Config
---=====================================
-local PATH = {"Inventory", "Items"}     -- Replion path per BagSize
-local USE_CONTROLLER_FIRST = true       -- prefer controller if it exposes good signals/APIs
+-- ======= Config =======
+local PATH = {"Inventory", "Items"}      -- Replion path per BagSize
+local USE_CONTROLLER_FIRST = true
 local DEBUG = false
 
---=====================================
--- Internal state
---=====================================
+-- ======= State =======
 local state = {
-    count = 0,                -- final computed bag count
-    max = nil,                -- MaxInventorySize (if available)
-    isFull = false,           -- derived from count >= max
-    items = {},               -- shallow array snapshot from Replion/Controller
-    toolsCount = 0,           -- number of Tools in Roblox Backpack
-    sources = {               -- which sources are active
-        replion = false,
-        controller = false,
-        constants = false,
-        backpack = false,
-    },
-    ts = 0,                   -- last update timestamp (os.clock)
+    count = 0,
+    max = nil,
+    isFull = false,
+    items = {},
+    toolsCount = 0,
+    sources = { replion=false, controller=false, constants=false, backpack=false },
+    ts = 0,
 }
 
 local started = false
-local conns = {}
+local conns = {}                -- simpan RBXScriptConnection
 local ReplionClient, Constants, Controller, ReplionData
+
 local ChangedBE = Instance.new("BindableEvent")
 inventoryDetector.Changed = ChangedBE.Event
 
---=====================================
--- Utils
---=====================================
+-- ======= Utils =======
 local function dprint(...)
     if DEBUG then
         print("[inventoryDetector]", ...)
     end
 end
 
-local function safeRequire(pathArr)
-    return pcall(function()
-        local ptr = ReplicatedStorage
-        for i = 1, #pathArr do
-            ptr = ptr:WaitForChild(pathArr[i], 5)
-        end
-        return require(ptr)
-    end)
+local function typeofCompat(v)
+    -- Beberapa executor lama suka aneh; fallback ke type()
+    local ok, t = pcall(function() return typeof(v) end)
+    if ok then return t end
+    return type(v)
 end
 
-local function isConnectable(v) -- RBXScriptSignal / GoodSignal-like / BindableEvent
-    if typeof(v) == "RBXScriptSignal" then return true end
-    if typeof(v) == "Instance" and v:IsA("BindableEvent") then return true end
-    if type(v) == "table" then
-        local ok = (type(v.Connect) == "function") or (type(v.Event) == "userdata")
+local function safeWaitForChild(parent, name, timeout)
+    timeout = tonumber(timeout) or 5
+    local obj = parent:FindFirstChild(name)
+    if obj then return obj end
+    local t0 = os.clock()
+    while os.clock() - t0 < timeout do
+        obj = parent:FindFirstChild(name)
+        if obj then return obj end
+        task.wait()
+    end
+    return nil
+end
+
+local function safeRequire(pathArr)
+    -- pathArr ex: {"Packages","Replion"}
+    local ptr = ReplicatedStorage
+    for i = 1, #pathArr do
+        ptr = safeWaitForChild(ptr, pathArr[i], 5)
+        if not ptr then return false, nil end
+    end
+    local ok, mod = pcall(function() return require(ptr) end)
+    if ok then return true, mod end
+    return false, nil
+end
+
+local function isConnectable(v)
+    local t = typeofCompat(v)
+    if t == "RBXScriptSignal" then return true end
+    if t == "Instance" and v and v.ClassName == "BindableEvent" then return true end
+    if t == "table" then
+        local ok = (type(v.Connect) == "function") or (typeofCompat(v.Event) == "RBXScriptSignal")
         return ok
     end
     return false
 end
 
 local function connectSignal(sig, fn)
-    if typeof(sig) == "RBXScriptSignal" then
+    local t = typeofCompat(sig)
+    if t == "RBXScriptSignal" then
         return sig:Connect(fn)
-    elseif typeof(sig) == "Instance" and sig:IsA("BindableEvent") then
+    elseif t == "Instance" and sig.ClassName == "BindableEvent" then
         return sig.Event:Connect(fn)
-    elseif type(sig) == "table" and type(sig.Connect) == "function" then
+    elseif t == "table" and type(sig.Connect) == "function" then
         return sig:Connect(fn)
     end
 end
@@ -95,8 +117,12 @@ local function backpackToolCount()
     local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
     local n = 0
     if bp then
-        for _, ch in ipairs(bp:GetChildren()) do
-            if ch:IsA("Tool") then n += 1 end
+        local children = bp:GetChildren()
+        for i = 1, #children do
+            local ch = children[i]
+            if ch and ch:IsA("Tool") then
+                n = n + 1
+            end
         end
     end
     return n
@@ -104,7 +130,6 @@ end
 
 local function fireChanged()
     state.ts = os.clock()
-    -- emit an immutable copy so external code gak bisa ngubah internal
     ChangedBE:Fire({
         count = state.count,
         max = state.max,
@@ -121,14 +146,10 @@ local function fireChanged()
     })
 end
 
---=====================================
--- Core recompute pipeline
---=====================================
+-- ======= Compute Pipeline =======
 local function computeFromConstants(repl)
     if not Constants then return nil end
-    local ok, c = pcall(function()
-        return Constants:CountInventorySize(repl)
-    end)
+    local ok, c = pcall(function() return Constants:CountInventorySize(repl) end)
     if ok and tonumber(c) then
         state.sources.constants = true
         return tonumber(c)
@@ -143,12 +164,10 @@ local function tryReadMax()
 end
 
 local function deriveCountFallback(itemsArr)
-    -- last-resort if CountInventorySize/Controller unavailable
     return type(itemsArr) == "table" and #itemsArr or 0
 end
 
 local function recompute()
-    -- priority: Constants:CountInventorySize(ReplionData) > Controller API > #items
     local newCount = nil
 
     if ReplionData and Constants then
@@ -156,7 +175,6 @@ local function recompute()
     end
 
     if not newCount and Controller then
-        -- Try common controller getters
         local tried = false
         local ok, got = pcall(function()
             tried = true
@@ -189,19 +207,16 @@ local function recompute()
     fireChanged()
 end
 
---=====================================
--- Replion wiring
---=====================================
+-- ======= Replion wiring =======
 local function hookReplion()
-    local okReplion, Replion = safeRequire({"Packages", "Replion"})
+    local okReplion, Replion = safeRequire({"Packages","Replion"})
     if not okReplion or not Replion or not Replion.Client then
         dprint("Replion not found")
         return
     end
     ReplionClient = Replion.Client
 
-    -- Constants for CountInventorySize & MaxInventorySize
-    local okConst, Const = safeRequire({"Shared", "Constants"})
+    local okConst, Const = safeRequire({"Shared","Constants"})
     if okConst and Const then
         Constants = Const
     end
@@ -220,61 +235,54 @@ local function hookReplion()
             recompute()
         end
 
-        -- initial
         onChange()
-
-        -- subscribe per BagSize
-        table.insert(conns, repl:OnChange(PATH, onChange))
-        table.insert(conns, repl:OnArrayInsert(PATH, onChange))
-        table.insert(conns, repl:OnArrayRemove(PATH, onChange))
+        local c1 = repl:OnChange(PATH, onChange)
+        local c2 = repl:OnArrayInsert(PATH, onChange)
+        local c3 = repl:OnArrayRemove(PATH, onChange)
+        if c1 then table.insert(conns, c1) end
+        if c2 then table.insert(conns, c2) end
+        if c3 then table.insert(conns, c3) end
     end)
 end
 
---=====================================
--- Backpack wiring
---=====================================
+-- ======= Backpack wiring =======
 local function hookBackpack()
-    local bp = LocalPlayer:WaitForChild("Backpack", 10)
+    local bp = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack", 10)
     if not bp then return end
-    table.insert(conns, bp.ChildAdded:Connect(function()
+    local cA = bp.ChildAdded:Connect(function()
         state.toolsCount = backpackToolCount()
         fireChanged()
-    end))
-    table.insert(conns, bp.ChildRemoved:Connect(function()
+    end)
+    local cR = bp.ChildRemoved:Connect(function()
         state.toolsCount = backpackToolCount()
         fireChanged()
-    end))
+    end)
+    table.insert(conns, cA)
+    table.insert(conns, cR)
     state.toolsCount = backpackToolCount()
     state.sources.backpack = true
 end
 
---=====================================
--- InventoryController wiring (best-effort)
---=====================================
+-- ======= InventoryController wiring (best-effort) =======
 local function hookInventoryController()
-    -- Try require
-    local okCtl, ctl = safeRequire({"Controllers", "InventoryController"})
+    local okCtl, ctl = safeRequire({"Controllers","InventoryController"})
     if not okCtl or type(ctl) ~= "table" then
         dprint("InventoryController not found or invalid")
         return
     end
     Controller = ctl
 
-    -- Try read items once from common getters
     local function snapFromController()
         local got = nil
-        -- common patterns: GetItems / GetInventory / Items field
-        local triedFuncs = {
-            "GetItems","getItems","GetInventory","getInventory","GetAll","getAll","Items",
-        }
-        for _, k in ipairs(triedFuncs) do
+        local candidates = {"GetItems","getItems","GetInventory","getInventory","GetAll","getAll","Items"}
+        for i = 1, #candidates do
+            local k = candidates[i]
             local v = Controller[k]
             if type(v) == "function" then
                 local ok, res = pcall(function() return v(Controller) end)
                 if ok and type(res) == "table" then got = res break end
             elseif type(v) == "table" then
-                got = v
-                break
+                got = v; break
             end
         end
         if got then
@@ -286,36 +294,31 @@ local function hookInventoryController()
     snapFromController()
     recompute()
 
-    -- Try hook events/signals commonly exposed
-    local candidateEvents = {
-        "Changed","OnChanged","ItemsChanged","InventoryChanged","Updated","OnUpdate","Event",
-    }
-    local connected = false
-    for _, name in ipairs(candidateEvents) do
+    local evNames = {"Changed","OnChanged","ItemsChanged","InventoryChanged","Updated","OnUpdate","Event"}
+    local hooked = false
+    for i = 1, #evNames do
+        local name = evNames[i]
         local sig = Controller[name]
         if sig and isConnectable(sig) then
             local conn = connectSignal(sig, function()
-                -- on any controller tick, attempt to refresh snapshot & recompute
                 snapFromController()
                 recompute()
             end)
             if conn then
                 table.insert(conns, conn)
                 dprint("Hooked InventoryController signal:", name)
-                connected = true
+                hooked = true
                 break
             end
         end
     end
 
-    if not connected then
-        dprint("No connectable signal found on InventoryController (fallback to Replion)")
+    if not hooked then
+        dprint("No connectable signal on InventoryController (fallback to Replion)")
     end
 end
 
---=====================================
--- Public API
---=====================================
+-- ======= Public API =======
 function inventoryDetector.Start(opts)
     if started then return end
     started = true
@@ -334,14 +337,15 @@ end
 function inventoryDetector.Stop()
     if not started then return end
     started = false
-    for _, c in ipairs(conns) do
-        pcall(function() c:Disconnect() end)
+    for i = 1, #conns do
+        local c = conns[i]
+        pcall(function() if c and c.Disconnect then c:Disconnect() end end)
     end
-    table.clear(conns)
+    -- manual clear (tanpa table.clear)
+    for i = #conns, 1, -1 do conns[i] = nil end
 end
 
 function inventoryDetector.GetSnapshot()
-    -- read-only copy
     return {
         count = state.count,
         max = state.max,
@@ -359,7 +363,7 @@ function inventoryDetector.GetSnapshot()
 end
 
 function inventoryDetector.EnableDebug(on)
-    DEBUG = not not on
+    DEBUG = (on and true) or false
 end
 
 return inventoryDetector
