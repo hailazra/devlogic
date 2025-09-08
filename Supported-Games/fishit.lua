@@ -643,29 +643,6 @@ local favfish_ddm = TabBackpack:Dropdown({
     end
 })
 
--- Fungsi untuk refresh dropdown dengan tier asli dari game
-local function refreshTierListFromFeature()
-    if autoFavFishFeature and autoFavFishFeature.GetTierNames and favfish_ddm.Reload then
-        local tierNames = autoFavFishFeature:GetTierNames()
-        if type(tierNames) == "table" and #tierNames > 0 then
-            print("[AutoFavoriteFish] Refreshing dropdown with", #tierNames, "tiers from game")
-            favfish_ddm:Reload(tierNames)
-            
-            -- Set default selection ke tier tinggi
-            local defaultSelection = {}
-            for _, tier in ipairs(tierNames) do
-                if tier == "SECRET" or tier == "Mythic" or tier == "Legendary" then
-                    table.insert(defaultSelection, tier)
-                end
-            end
-            if #defaultSelection > 0 and favfish_ddm.Set then
-                favfish_ddm:Set(defaultSelection)
-                selectedTiers = defaultSelection
-            end
-        end
-    end
-end
-
 local favfish_tgl = TabBackpack:Toggle({
     Title   = "Auto Favorite Fish",
     Desc    = "Automatically favorite fish with selected rarities",
