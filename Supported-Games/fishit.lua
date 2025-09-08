@@ -28,27 +28,6 @@ pcall(function()
 end)
 _G.NetPath = NetPath
 
--- === [NEW] Inventory Watcher bootstrap ===
-local function ensureInventoryWatcher()
-    if _G.invWatcher and _G.invWatcher._destroyed ~= true then
-        return _G.invWatcher
-    end
-    local ok, InventoryWatcherOrErr = pcall(function()
-        return loadstring(game:HttpGet(
-            "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/inventdetectfishit.lua"
-        ))()
-    end)
-    if ok and InventoryWatcherOrErr then
-        local watcher = InventoryWatcherOrErr.new()
-        _G.invWatcher = watcher
-        _G.InventoryWatcherInstance = watcher
-        return watcher
-    else
-        warn("[fishit] Failed to load InventoryWatcher:", tostring(InventoryWatcherOrErr))
-        return nil
-    end
-end
-
 
 -- ===========================
 -- FEATURE MANAGER
@@ -685,12 +664,6 @@ local favfish_tgl = TabBackpack:Toggle({
     Default  = false,
     Callback = function(state)
         if state then
-            -- pakai watcher yang sudah kamu buat di atas; kalau belum ada dan kamu punya helper ensureInventoryWatcher, ini akan manggilnya
-            local watcher = _G.invWatcher or _G.InventoryWatcherInstance
-            if not watcher and typeof(ensureInventoryWatcher) == "function" then
-                watcher = ensureInventoryWatcher()
-            end
-
             -- Load feature jika belum ada
             if not autoFavFishFeature then
                 print("[AutoFavoriteFish] Loading feature...")
