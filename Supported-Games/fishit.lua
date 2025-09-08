@@ -450,6 +450,13 @@ local DiscordBtn = TabHome:Button({
     end
 })
 
+local othersec = TabHome:Section({ 
+    Title = "Others",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+
+--- Anti AFK
 local antiafkFeature = nil
 
 local antiafk_tgl = TabHome:Toggle({
@@ -470,6 +477,16 @@ local antiafk_tgl = TabHome:Toggle({
       if antiafkFeature and antiafkFeature.Stop then antiafkFeature:Stop() end
     end
   end
+})
+
+--- Boost FPS
+local boostfps_btn = TabHome:Button({
+    Title = "Boost FPS",
+    Desc = "Test Button",
+    Locked = false,
+    Callback = function()
+        print("clicked")
+    end
 })
 
 --- === Main === ---
@@ -605,7 +622,7 @@ local favfish_sec = TabBackpack:Section({
 })
 
 local favfish_ddm = TabBackpack:Dropdown({
-    Title = "Select Fish",
+    Title = "Select Rarity",
     Values = { "Category A", "Category B", "Category C" },
     Value = { "Category A" },
     Multi = true,
@@ -823,7 +840,7 @@ local autogift_tgl = TabAutomation:Toggle({
 
 local autogiftacc_tgl = TabAutomation:Toggle({
     Title = "Auto Accept Gift",
-    Desc  = "Auto Gift held Fish/Item",
+    Desc  = "",
     Default = false,
     Callback = function(state) 
         print("Toggle Activated" .. tostring(state))
