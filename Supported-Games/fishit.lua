@@ -28,6 +28,11 @@ pcall(function()
 end)
 _G.NetPath = NetPath
 
+-- Load InventoryWatcher globally for features that need it
+_G.InventoryWatcher = nil
+pcall(function()
+    _G.InventoryWatcher = loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/inventdetectfishit.lua"))()
+end)
 
 -- ===========================
 -- FEATURE MANAGER
@@ -629,7 +634,6 @@ local selectedTiers = {}
 -- Dropdown: start dengan tier default, akan di-reload saat feature dimuat
 local favfish_ddm = TabBackpack:Dropdown({
     Title     = "Select Rarity",
-    -- IMPORTANT: samakan case dengan ReplicatedStorage.Tiers (SECRET all caps)
     Values    = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common" }, -- default fallback
     Value     = {},
     Multi     = true,
@@ -642,22 +646,6 @@ local favfish_ddm = TabBackpack:Dropdown({
     end
 })
 
--- === reload dropdown rarity dari game ===
-local function refreshTierListFromFeature()
-    if autoFavFishFeature and autoFavFishFeature.GetTierNames then
-        local tiers = autoFavFishFeature:GetTierNames()
-        if type(tiers) == "table" and #tiers > 0 then
-            if favfish_ddm.Reload then
-                favfish_ddm:Reload(tiers)
-            elseif favfish_ddm.SetOptions then
-                favfish_ddm:SetOptions(tiers)
-            else
-                warn("[fishit] Dropdown missing Reload/SetOptions; keep fallback values")
-            end
-        end
-    end
-end
-
 local favfish_tgl = TabBackpack:Toggle({
     Title    = "Auto Favorite Fish",
     Desc     = "Automatically favorite fish with selected rarities",
@@ -668,15 +656,20 @@ local favfish_tgl = TabBackpack:Toggle({
             if not autoFavFishFeature then
                 print("[AutoFavoriteFish] Loading feature...")
                 autoFavFishFeature = FeatureManager:LoadFeature("AutoFavoriteFish", {
-                    dropdown = favfish_ddm,
-                    toggle   = favfish_tgl,
+                    tierDropdown = favfish_ddm,
+                    toggle       = favfish_tgl,
                 })
 
                 -- setelah Init, reload options rarity dari game
                 if autoFavFishFeature then
                     task.spawn(function()
                         task.wait(0.5)
-                        refreshTierListFromFeature()
+                        if autoFavFishFeature.GetTierNames then
+                            local tierNames = autoFavFishFeature:GetTierNames()
+                            if favfish_ddm.Reload then
+                                favfish_ddm:Reload(tierNames)
+                            end
+                        end
                     end)
                 end
             end
@@ -696,34 +689,30 @@ local favfish_tgl = TabBackpack:Toggle({
             -- Start
             print("[AutoFavoriteFish] Starting with tiers:", table.concat(selectedTiers, ", "))
             if autoFavFishFeature and autoFavFishFeature.Start then
-                local ok = autoFavFishFeature:Start({
-                    tierNames  = selectedTiers,
-                    delay      = 0.10,   -- aman dari throttling
-                    maxPerTick = 15
+                autoFavFishFeature:Start({
+                    tierList = selectedTiers  -- Changed from tierNames to match script
                 })
-                if ok then
-                    WindUI:Notify({
-                        Title    = "Started",
-                        Content  = "Auto Favorite Fish is now active",
-                        Icon     = "check",
-                        Duration = 2
-                    })
-                else
-                    favfish_tgl:Set(false)
-                    WindUI:Notify({
-                        Title    = "Failed",
-                        Content  = "Could not start Auto Favorite Fish",
-                        Icon     = "x",
-                        Duration = 3
-                    })
-                end
-            end -- <<< TUTUP if autoFavFishFeature and Start
+                WindUI:Notify({
+                    Title    = "Started",
+                    Content  = "Auto Favorite Fish is now active",
+                    Icon     = "check",
+                    Duration = 2
+                })
+            else
+                favfish_tgl:Set(false)
+                WindUI:Notify({
+                    Title    = "Failed",
+                    Content  = "Could not start Auto Favorite Fish",
+                    Icon     = "x",
+                    Duration = 3
+                })
+            end
         else
             if autoFavFishFeature and autoFavFishFeature.Stop then
                 autoFavFishFeature:Stop()
             end
-        end -- <<< TUTUP if state
-    end -- <<< TUTUP function(state)
+        end
+    end
 })
 
 
