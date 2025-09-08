@@ -1,15 +1,10 @@
---[[
-  inventory_watcher_standalone_fix.lua
-  - Reclassify setiap entry -> kategori kanonik (Fishes/Items/Potions/Baits/Fishing Rods)
-  - Dump & counting pakai kategori kanonik (bukan path raw)
-]]
+-- inventory_watcher_v3.lua
+-- RAW vs TYPED snapshots, default API pakai TYPED agar ikan tidak nyasar ke Items
 
--- ====== Config printing ======
-local PRINT_SUMMARY_ON_READY = true
-local PRINT_DUMP_ON_READY    = false
-local DUMP_LIMIT_PER_CAT     = 200
+local InventoryWatcher = {}
+InventoryWatcher.__index = InventoryWatcher
 
--- ====== Services & game deps ======
+-- ===== Deps =====
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Replion     = require(ReplicatedStorage.Packages.Replion)
 local Constants   = require(ReplicatedStorage.Shared.Constants)
@@ -17,7 +12,19 @@ local ItemUtility = require(ReplicatedStorage.Shared.ItemUtility)
 local StringLib   = nil
 pcall(function() StringLib = require(ReplicatedStorage.Shared.StringLibrary) end)
 
--- ====== Helpers ======
+-- ===== Config =====
+local RAW_KEYS   = { "Items", "Fishes", "Potions", "Baits", "Fishing Rods" }
+local TYPED_KEYS = { "Items", "Fishes", "Potions", "Baits", "Fishing Rods" }
+
+-- Optional: manual override kalau ada id yang salah klasifikasi
+-- Isi runtime: getgenv().DevlogicInvForceType = { [12345] = "Fishes" }
+local function getForceType()
+    local t = rawget(getgenv(), "DevlogicInvForceType")
+    if type(t) == "table" then return t end
+    return nil
+end
+
+-- ===== Utils =====
 local function mkSignal()
     local ev = Instance.new("BindableEvent")
     return {
@@ -33,8 +40,20 @@ local function shallowCopyArray(t)
     return out
 end
 
-local RAW_KEYS   = { "Items", "Fishes", "Potions", "Baits", "Fishing Rods" } -- path di Replion
-local TYPED_KEYS = { "Items", "Fishes", "Potions", "Baits", "Fishing Rods" } -- kategori kanonik
+local function fmtWeight(w)
+    if not w then return nil end
+    if StringLib and StringLib.AddWeight then
+        local ok, txt = pcall(function() return StringLib:AddWeight(w) end)
+        if ok and txt then return txt end
+    end
+    return tostring(w).."kg"
+end
+
+-- NOTE: sebagian game pakai "Fishing Rod" vs "Fishing Rods"
+local function normalizeTypeName(s)
+    if s == "Fishing Rod" then return "Fishing Rods" end
+    return s
+end
 
 -- Call ItemUtility method (colon/dot safe)
 local function IU(method, ...)
@@ -46,51 +65,55 @@ local function IU(method, ...)
     return nil
 end
 
-local function fmtWeight(w)
-    if not w then return nil end
-    if StringLib and StringLib.AddWeight then
-        local ok, txt = pcall(function() return StringLib:AddWeight(w) end)
-        if ok and txt then return txt end
-    end
-    return tostring(w).."kg"
-end
+-- ===== Classify with cache =====
+local TYPE_CACHE = {}  -- id -> "Fishes"/"Items"/...
 
--- Klasifikasi entry -> kategori kanonik
-local function classifyEntry(entry)
+local function classifyEntry(entry, rawHint)
     local id = entry and (entry.Id or entry.id)
     if not id then return "Items" end
 
-    -- Jika ada metadata berat, sangat kuat indikasi Fishes
+    -- manual override
+    local FT = getForceType()
+    if FT and FT[id] then return FT[id] end
+
+    -- cache
+    local cached = TYPE_CACHE[id]
+    if cached then return cached end
+
+    -- heuristik kuat: ikan punya Metadata.Weight
     if entry.Metadata and entry.Metadata.Weight then
-        return "Fishes"
+        TYPE_CACHE[id] = "Fishes"; return "Fishes"
     end
 
-    -- Spesifik Bait / Potion
+    -- bait / potion spesifik
     local b = IU("GetBaitData", id)
-    if b and b.Data then return "Baits" end
+    if b and b.Data then TYPE_CACHE[id] = "Baits"; return "Baits" end
     local p = IU("GetPotionData", id)
-    if p and p.Data then return "Potions" end
+    if p and p.Data then TYPE_CACHE[id] = "Potions"; return "Potions" end
 
-    -- Per-type resolver
+    -- per-type resolver
     local f = IU("GetItemDataFromItemType", "Fishes", id)
-    if f and f.Data and f.Data.Type == "Fishes" then return "Fishes" end
-
+    if f and f.Data and (normalizeTypeName(f.Data.Type) == "Fishes") then
+        TYPE_CACHE[id] = "Fishes"; return "Fishes"
+    end
     local it = IU("GetItemDataFromItemType", "Items", id)
-    if it and it.Data and it.Data.Type == "Items" then return "Items" end
+    if it and it.Data and (normalizeTypeName(it.Data.Type) == "Items") then
+        TYPE_CACHE[id] = "Items"; return "Items"
+    end
 
-    -- Generic resolver (cek Type)
+    -- generic
     local g = IU("GetItemData", id)
     if g and g.Data and g.Data.Type then
-        -- normalisasi nama type agar match TYPED_KEYS
-        local typ = tostring(g.Data.Type)
-        if typ == "Fishing Rods" then return "Fishing Rods" end
-        if typ == "Fishes"       then return "Fishes" end
-        if typ == "Baits"        then return "Baits" end
-        if typ == "Potions"      then return "Potions" end
-        if typ == "Items"        then return "Items" end
+        local typ = normalizeTypeName(tostring(g.Data.Type))
+        if typ == "Fishing Rods" or typ == "Fishes" or typ == "Baits" or typ == "Potions" or typ == "Items" then
+            TYPE_CACHE[id] = typ; return typ
+        end
     end
 
-    -- Fallback aman
+    -- hint terakhir: kalau rawHint == "Fishes", prefer Fishes
+    if rawHint == "Fishes" then TYPE_CACHE[id] = "Fishes"; return "Fishes" end
+
+    TYPE_CACHE[id] = "Items"
     return "Items"
 end
 
@@ -104,39 +127,35 @@ local function resolveName(typedCategory, id)
         local d = IU("GetPotionData", id)
         if d and d.Data and d.Data.Name then return d.Data.Name end
     end
-    -- Coba per-type sesuai kategori
     local d2 = IU("GetItemDataFromItemType", typedCategory, id)
     if d2 and d2.Data and d2.Data.Name then return d2.Data.Name end
-    -- Generic
     local d3 = IU("GetItemData", id)
     if d3 and d3.Data and d3.Data.Name then return d3.Data.Name end
     return tostring(id)
 end
 
--- ====== InventoryWatcher ======
-local InventoryWatcher = {}
-InventoryWatcher.__index = InventoryWatcher
-
+-- ===== Core =====
 function InventoryWatcher.new()
     local self = setmetatable({}, InventoryWatcher)
+
     self._data   = nil
     self._max    = Constants.MaxInventorySize or 0
     self._total  = 0
 
-    -- Snapshot RAW (sesuai path di Replion)
+    -- RAW snapshots dari Replion
     self._rawSnap = { Items={}, Fishes={}, Potions={}, Baits={}, ["Fishing Rods"]={} }
 
-    -- Snapshot TYPED (hasil klasifikasi → dipakai untuk dump & hitung)
+    -- TYPED snapshots (hasil klasifikasi) -> dipakai oleh public API
     self._typedSnap = { Items={}, Fishes={}, Potions={}, Baits={}, ["Fishing Rods"]={} }
     self._byType    = { Items=0, Fishes=0, Potions=0, Baits=0, ["Fishing Rods"]=0 }
 
-    self._equipped = { itemsSet = {}, baitId = nil }
+    self._equipped  = { itemsSet = {}, baitId = nil }
 
-    self._changed  = mkSignal()  -- (total,max,free,byType)
-    self._equipSig = mkSignal()  -- (equippedSet, baitId)
-    self._readySig = mkSignal()
-    self._conns    = {}
-    self._ready    = false
+    self._changed   = mkSignal()  -- (total,max,free,byType)
+    self._equipSig  = mkSignal()  -- (equippedSet, baitId)
+    self._readySig  = mkSignal()
+    self._conns     = {}
+    self._ready     = false
 
     Replion.Client:AwaitReplion("Data", function(data)
         self._data = data
@@ -161,7 +180,7 @@ function InventoryWatcher:_recountTotal()
     self._max   = Constants.MaxInventorySize or self._max or 0
 end
 
-function InventoryWatcher:_snapRawCategory(key)
+function InventoryWatcher:_snapRaw(key)
     local arr = self:_get({"Inventory", key})
     if type(arr) == "table" then
         self._rawSnap[key] = shallowCopyArray(arr)
@@ -176,11 +195,11 @@ function InventoryWatcher:_rebuildTypedFromRaw()
         self._typedSnap[k] = {}
         self._byType[k]    = 0
     end
-    -- klasifikasi tiap entry dari semua array RAW
+    -- klasifikasi
     for _, rawKey in ipairs(RAW_KEYS) do
         local arr = self._rawSnap[rawKey]
         for _, entry in ipairs(arr) do
-            local cat = classifyEntry(entry)
+            local cat = classifyEntry(entry, rawKey)
             table.insert(self._typedSnap[cat], entry)
             self._byType[cat] += 1
         end
@@ -193,11 +212,9 @@ function InventoryWatcher:_notify()
 end
 
 function InventoryWatcher:_rescanAll()
-    -- refresh RAW
     for _, key in ipairs(RAW_KEYS) do
-        self:_snapRawCategory(key)
+        self:_snapRaw(key)
     end
-    -- rebuild typed + recount total
     self:_rebuildTypedFromRaw()
     self:_recountTotal()
     self:_notify()
@@ -212,10 +229,9 @@ function InventoryWatcher:_resubscribe()
     self:_clearConns()
     self:_rescanAll()
 
-    -- subscribe per path RAW (perubahan apapun -> rebuild typed)
     local function bindKey(key)
         local function onChange()
-            self:_snapRawCategory(key)
+            self:_snapRaw(key)
             self:_rebuildTypedFromRaw()
             self:_recountTotal()
             self:_notify()
@@ -226,22 +242,20 @@ function InventoryWatcher:_resubscribe()
     end
     for _, key in ipairs(RAW_KEYS) do bindKey(key) end
 
-    -- equipped items
+    -- equipped items & bait
     table.insert(self._conns, self._data:OnChange("EquippedItems", function(_, new)
         local set = {}
-        if typeof(new)=="table" then for _,uuid in ipairs(new) do set[uuid] = true end end
+        if typeof(new)=="table" then for _,uuid in ipairs(new) do set[uuid]=true end end
         self._equipped.itemsSet = set
         self._equipSig:Fire(self._equipped.itemsSet, self._equipped.baitId)
     end))
-
-    -- equipped bait
     table.insert(self._conns, self._data:OnChange("EquippedBaitId", function(_, newId)
         self._equipped.baitId = newId
         self._equipSig:Fire(self._equipped.itemsSet, self._equipped.baitId)
     end))
 end
 
--- ==== Public API ====
+-- ===== Public API =====
 function InventoryWatcher:onReady(cb)
     if self._ready then task.defer(cb); return {Disconnect=function() end} end
     return self._readySig:Connect(cb)
@@ -261,7 +275,8 @@ function InventoryWatcher:getCountsByType()
     return t
 end
 
-function InventoryWatcher:getSnapshot(typeName) -- kategori kanonik
+-- Default: TYPED (kanonik)
+function InventoryWatcher:getSnapshot(typeName)
     if typeName then
         return shallowCopyArray(self._typedSnap[typeName] or {})
     else
@@ -271,8 +286,19 @@ function InventoryWatcher:getSnapshot(typeName) -- kategori kanonik
     end
 end
 
+-- RAW snapshot (opsional, untuk debug)
+function InventoryWatcher:getSnapshotRaw(typeName)
+    if typeName then
+        return shallowCopyArray(self._rawSnap[typeName] or {})
+    else
+        local out = {}
+        for k,arr in pairs(self._rawSnap) do out[k]=shallowCopyArray(arr) end
+        return out
+    end
+end
+
 function InventoryWatcher:getTotals()
-    local free = math.max(0,(self._max or 0)-(self._total or 0))
+    local free = math.max(0, (self._max or 0)-(self._total or 0))
     return self._total or 0, self._max or 0, free
 end
 
@@ -291,21 +317,19 @@ function InventoryWatcher:destroy()
     self._readySig:Destroy()
 end
 
--- ====== Dumper ======
-local function dumpCategory(inv, typedCategory, limit)
-    limit = limit or DUMP_LIMIT_PER_CAT
-    local arr = inv:getSnapshot(typedCategory)
+-- Convenience (optional)
+function InventoryWatcher:dumpCategory(typedCategory, limit)
+    limit = limit or 200
+    local arr = self:getSnapshot(typedCategory)
     print(("-- %s (%d) --"):format(typedCategory, #arr))
     for i, entry in ipairs(arr) do
         if i > limit then
-            print(("... truncated at %d (set DUMP_LIMIT_PER_CAT to see more)"):format(limit))
-            break
+            print(("... truncated at %d"):format(limit)); break
         end
         local id    = entry.Id or entry.id
         local uuid  = entry.UUID or entry.Uuid or entry.uuid
         local meta  = entry.Metadata or {}
         local name  = resolveName(typedCategory, id)
-
         if typedCategory == "Fishes" then
             local w  = fmtWeight(meta.Weight)
             local v  = meta.VariantId or meta.Mutation or meta.Variant
@@ -316,41 +340,5 @@ local function dumpCategory(inv, typedCategory, limit)
         end
     end
 end
-
-local function dumpAll(inv)
-    for _, key in ipairs(TYPED_KEYS) do
-        dumpCategory(inv, key)
-    end
-end
-
--- ====== Runner ======
-local inv = InventoryWatcher.new()
-
-inv:onReady(function()
-    local total, max, free = inv:getTotals()
-    local byType = inv:getCountsByType()
-    print(("[INV] %d/%d (free %d) | Fishes=%d, Items=%d, Potions=%d, Baits=%d, Rods=%d")
-        :format(total, max, free,
-            byType.Fishes or 0, byType.Items or 0, byType.Potions or 0, byType.Baits or 0, byType["Fishing Rods"] or 0))
-
-    print("Equipped bait:", inv:getEquippedBaitId(), "AutoSellThreshold:", inv:getAutoSellThreshold())
-
-    if PRINT_DUMP_ON_READY then
-        dumpAll(inv)
-    end
-end)
-
--- Global helpers
-getgenv().DevlogicInv = {
-    dumpAll = function() dumpAll(inv) end,
-    dump    = function(cat, limit) dumpCategory(inv, cat, limit) end, -- cat: "Fishes"/"Items"/"Potions"/"Baits"/"Fishing Rods"
-    snap    = function(cat) return inv:getSnapshot(cat) end,
-    totals  = function() return inv:getTotals() end,
-    counts  = function() return inv:getCountsByType() end,
-    bait    = function() return inv:getEquippedBaitId() end,
-}
-
-print("[inventory_watcher] fixed. Use DevlogicInv.dump('Fishes') / DevlogicInv.dump('Items').")
-
 
 return InventoryWatcher
