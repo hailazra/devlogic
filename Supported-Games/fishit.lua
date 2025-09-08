@@ -625,22 +625,10 @@ local favfish_sec = TabBackpack:Section({
 local autoFavFishFeature = nil
 local selectedTiers = {}
 
--- Preload tier names (fallback) langsung dari ReplicatedStorage.Tiers
-local function preloadTierNames()
-    local names = {}
-    local ok, tiers = pcall(function() return require(game:GetService("ReplicatedStorage"):WaitForChild("Tiers")) end)
-    if ok and type(tiers) == "table" then
-        table.sort(tiers, function(a,b) return (a.Tier or 99) < (b.Tier or 99) end)
-        for _, t in ipairs(tiers) do
-            if t and t.Name then table.insert(names, t.Name) end
-        end
-    end
-    return (#names > 0) and names or { "SECRET", "Mythic", "Legendary" }
-end
-
+-- dropdown (boleh tetap static dulu; nanti kita refresh dari feature)
 local favfish_ddm = TabBackpack:Dropdown({
     Title     = "Select Rarity",
-    Values    = preloadTierNames(), -- akan di-reload setelah modul fitur diload
+    Values    = { "SECRET", "Mythic", "Legendary" }, -- akan di-override saat feature loaded
     Value     = {},
     Multi     = true,
     AllowNone = true,
@@ -652,41 +640,43 @@ local favfish_ddm = TabBackpack:Dropdown({
     end
 })
 
+local function refreshTierListFromFeature()
+    if autoFavFishFeature and autoFavFishFeature.GetTierNames and favfish_ddm.SetValues then
+        local names = autoFavFishFeature:GetTierNames() or {}
+        favfish_ddm:SetValues(names)
+    end
+end
+
 local favfish_tgl = TabBackpack:Toggle({
     Title   = "Auto Favorite Fish",
     Default = false,
     Callback = function(state)
         if state then
-            -- Harus pilih minimal 1 tier
-            if not selectedTiers or #selectedTiers == 0 then
-                WindUI:Notify({ Title="Info", Content="Select at least one rarity first", Icon="info", Duration=3 })
-                if favfish_tgl.Set then favfish_tgl:Set(false) end
-                return
-            end
-
-            -- Load modul fitur kalau belum
+            -- pastikan feature ter-load
             if not autoFavFishFeature then
                 autoFavFishFeature = FeatureManager:LoadFeature("AutoFavoriteFish", {
-                    rarityDropdownMulti = favfish_ddm,
-                    toggle              = favfish_tgl,
+                    dropdown = favfish_ddm,
+                    toggle   = favfish_tgl,
                 })
-                -- Sesudah Init, minta nama tier dari modul biar konsisten
-                if autoFavFishFeature and autoFavFishFeature.GetTierNames then
-                    local names = autoFavFishFeature:GetTierNames()
-                    if favfish_ddm.Reload then
-                        favfish_ddm:Reload(names)
-                    elseif favfish_ddm.SetOptions then
-                        favfish_ddm:SetOptions(names)
-                    end
+                -- refresh opsi tier dari game (ReplicatedStorage.Tiers)
+                refreshTierListFromFeature()
+                -- kalau user sudah milih sebelumnya, terusin ke feature
+                if #selectedTiers > 0 and autoFavFishFeature.SetDesiredTiersByNames then
+                    autoFavFishFeature:SetDesiredTiersByNames(selectedTiers)
                 end
             end
 
-            -- Start
+            if not selectedTiers or #selectedTiers == 0 then
+                WindUI:Notify({ Title="Pick tiers", Content="Pilih minimal 1 tier dulu", Icon="alert-circle", Duration=3 })
+                favfish_tgl:Set(false) -- <<-- perbaiki var name
+                return
+            end
+
             if autoFavFishFeature and autoFavFishFeature.Start then
                 autoFavFishFeature:Start({
-                    tierNames = selectedTiers, -- array nama: {"Legendary","Mythic",...}
-                    delay     = 0.12,          -- jeda antar FavoriteItem (anti-spam)
-                    maxPerTick= 10,            -- batch size per loop
+                    tierNames  = selectedTiers, -- array nama tier
+                    delay      = 0.10,          -- jeda antar favorit
+                    maxPerTick = 15,            -- batch per tick
                 })
             else
                 favfish_tgl:Set(false)
@@ -778,10 +768,28 @@ local autoenchantrod_sec = TabAutomation:Section({
 local autoEnchantFeature = nil
 local selectedEnchants   = {}
 
--- Dropdown multi
+local function preloadEnchantNames()
+    local names = {}
+    local enchFolder = ReplicatedStorage:FindFirstChild("Enchants")
+    if enchFolder then
+        for _,mod in ipairs(enchFolder:GetChildren()) do
+            if mod:IsA("ModuleScript") then
+                local ok, data = pcall(require, mod)
+                if ok and type(data)=="table" and data.Data and data.Data.Name then
+                    table.insert(names, data.Data.Name)
+                end
+            end
+        end
+    end
+    table.sort(names)
+    if enchant_ddm.Reload then enchant_ddm:Reload(names) end
+end
+preloadEnchantNames()
+
+-- Dropdown multi untuk memilih enchant yang diincar
 local enchant_ddm = TabAutomation:Dropdown({
     Title     = "Select Enchants",
-    Values    = {"Cursed I", "Leprechaun II", "Gold Digger I", "Mutation Hunter I" },       -- akan diisi saat modul diload
+    Values    = preloadEnchantNames(),       -- akan diisi saat modul diload
     Value     = {},
     Multi     = true,
     AllowNone = true,
@@ -795,8 +803,7 @@ local enchant_ddm = TabAutomation:Dropdown({
     end
 })
 
-
--- Toggle
+-- Toggle untuk menghidupkan/mematikan auto enchant
 local enchant_tgl = TabAutomation:Toggle({
     Title   = "Auto Enchant Rod",
     Default = false,
@@ -855,23 +862,6 @@ local enchant_tgl = TabAutomation:Toggle({
     end
 })
 
-local function preloadEnchantNames()
-    local names = {}
-    local enchFolder = ReplicatedStorage:FindFirstChild("Enchants")
-    if enchFolder then
-        for _,mod in ipairs(enchFolder:GetChildren()) do
-            if mod:IsA("ModuleScript") then
-                local ok, data = pcall(require, mod)
-                if ok and type(data)=="table" and data.Data and data.Data.Name then
-                    table.insert(names, data.Data.Name)
-                end
-            end
-        end
-    end
-    table.sort(names)
-    if enchant_ddm.Reload then enchant_ddm:Reload(names) end
-end
-preloadEnchantNames()
 
 --- Auto Gift
 local autogift_sec = TabAutomation:Section({ 
