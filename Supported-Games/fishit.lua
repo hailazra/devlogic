@@ -698,32 +698,22 @@ local autoenchantrod_sec = TabAutomation:Section({
     TextSize = 17, -- Default Size
 })
 
-local enchantFeature = nil
-local selectedEnchantSet = {}
+local autoEnchantFeature = nil
+local selectedEnchants   = {}
 
 -- Dropdown multi
 local enchant_ddm = TabAutomation:Dropdown({
     Title     = "Select Enchants",
-    Values    = {"Cursed I", "Leprechaun I", "Gold Digger I" },       -- akan diisi setelah modul diload
+    Values    = {},       -- akan diisi saat modul diload
     Value     = {},
     Multi     = true,
     AllowNone = true,
-   Callback  = function(options)
-        -- selalu rebuild set dengan aman
-        selectedSet = {}
-        if type(options) == "table" then
-            for _, name in ipairs(options) do
-                if type(name) == "string" and name ~= "" then
-                    selectedSet[name] = true
-                end
-            end
-        end
-        if autoEnchant and autoEnchant.SetDesiredByNames then
-            -- kirim array names (bukan set) ke modul (dia sudah handle)
-            local arr = {}
-            for n,_ in pairs(selectedSet) do table.insert(arr, n) end
-            table.sort(arr)
-            autoEnchant:SetDesiredByNames(arr)
+    Callback  = function(options)
+        -- options adalah array nama enchant yang dipilih
+        selectedEnchants = options or {}
+        -- Jika fitur sudah ada, update target
+        if autoEnchantFeature and autoEnchantFeature.SetDesiredByNames then
+            autoEnchantFeature:SetDesiredByNames(selectedEnchants)
         end
     end
 })
@@ -731,43 +721,59 @@ local enchant_ddm = TabAutomation:Dropdown({
 
 -- Toggle
 local enchant_tgl = TabAutomation:Toggle({
-    Title = "Auto Enchant Rod",
+    Title   = "Auto Enchant Rod",
     Default = false,
-     Callback = function(state)
+    Callback = function(state)
         if state then
-            if not autoEnchant then
-                autoEnchant = FeatureManager:LoadFeature("AutoEnchantRod", {
-                    enchantDropdownMulti = enchant_ddm,
-                    toggle               = enchant_tgl,
+            -- Pastikan ada target yang dipilih
+            if #selectedEnchants == 0 then
+                WindUI:Notify({
+                    Title    = "Info",
+                    Content  = "Select at least one enchant first",
+                    Icon     = "info",
+                    Duration = 3
                 })
-                if autoEnchant and autoEnchant.GetEnchantNames then
-                    local names = autoEnchant:GetEnchantNames()
-                    if enchant_ddm.Reload then enchant_ddm:Reload(names) end
-                end
-            end
-
-            -- PERBAIKAN: cek dengan helper, bukan next(selectedSet) langsung
-            if isEmpty(selectedSet) then
-                WindUI:Notify({ Title="Info", Content="Select at least 1 enchant", Icon="info", Duration=3 })
                 enchant_tgl:Set(false)
                 return
             end
-
-            if autoEnchant and autoEnchant.Start then
-                local names = {}
-                for n,_ in pairs(selectedSet) do table.insert(names, n) end
-                table.sort(names)
-                autoEnchant:Start({
-                    enchantNames = names,
-                    delay        = 0.6
+            -- Load modul jika belum ada
+            if not autoEnchantFeature then
+                autoEnchantFeature = FeatureManager:LoadFeature("AutoEnchantRod", {
+                    enchantDropdownMulti = enchant_ddm,
+                    toggle               = enchant_tgl,
                 })
-                WindUI:Notify({ Title="Tip", Content="Equip Enchant Stone sekali supaya UUID ketangkap.", Icon="info", Duration=4 })
+                -- Isi dropdown dengan semua nama enchant dari modul
+                if autoEnchantFeature and autoEnchantFeature.GetEnchantNames then
+                    local names = autoEnchantFeature:GetEnchantNames()
+                    if enchant_ddm.Reload then enchant_ddm:Reload(names) end
+                end
+            end
+            -- Mulai dengan target dan delay default
+            if autoEnchantFeature and autoEnchantFeature.Start then
+                autoEnchantFeature:Start({
+                    enchantNames = selectedEnchants,
+                    delay        = 0.6, -- jeda antar roll
+                })
+                WindUI:Notify({
+                    Title    = "Tip",
+                    Content  = "Equip an Enchant Stone once so the script captures the UUID.",
+                    Icon     = "info",
+                    Duration = 4
+                })
             else
                 enchant_tgl:Set(false)
-                WindUI:Notify({ Title="Failed", Content="Could not start AutoEnchantRod", Icon="x", Duration=3 })
+                WindUI:Notify({
+                    Title    = "Failed",
+                    Content  = "Could not start AutoEnchantRod",
+                    Icon     = "x",
+                    Duration = 3
+                })
             end
         else
-            if autoEnchant and autoEnchant.Stop then autoEnchant:Stop() end
+            -- Matikan fitur jika toggle off
+            if autoEnchantFeature and autoEnchantFeature.Stop then
+                autoEnchantFeature:Stop()
+            end
         end
     end
 })
