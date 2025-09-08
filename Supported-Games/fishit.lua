@@ -418,12 +418,13 @@ end
 Window:CreateTopbarButton("changelog", "newspaper", ShowChangelog, 995)
 
 --========== TABS ==========
-local TabHome     = Window:Tab({ Title = "Home",     Icon = "house" })
-local TabMain     = Window:Tab({ Title = "Main",     Icon = "gamepad" })
-local TabBackpack = Window:Tab({ Title = "Backpack", Icon = "backpack" })
-local TabShop     = Window:Tab({ Title = "Shop",     Icon = "shopping-bag" })
-local TabTeleport = Window:Tab({ Title = "Teleport", Icon = "map" })
-local TabMisc     = Window:Tab({ Title = "Misc",     Icon = "cog" })
+local TabHome            = Window:Tab({ Title = "Home",           Icon = "house" })
+local TabMain            = Window:Tab({ Title = "Main",           Icon = "gamepad" })
+local TabBackpack        = Window:Tab({ Title = "Backpack",       Icon = "backpack" })
+local TabAutomation      = Window:Tab({ Title = "Automation",     Icon = "workflow" })
+local TabShop            = Window:Tab({ Title = "Shop",           Icon = "shopping-bag" })
+local TabTeleport        = Window:Tab({ Title = "Teleport",       Icon = "map" })
+local TabMisc            = Window:Tab({ Title = "Misc",           Icon = "cog" })
 
 --- === Home === ---
 local DLsec = TabHome:Section({ 
@@ -688,14 +689,41 @@ local sellfish_tgl = TabBackpack:Toggle({
   end
 })
 
---- Gift Fish
-local autogift_sec = TabBackpack:Section({ 
+--- === AUTOMATION === ---
+--- Auto Enchant Rod
+local autoenchantrod_sec = TabAutomation:Section({ 
+    Title = "Auto Gift",
+    TextXAlignment = "Left",
+    TextSize = 17, -- Default Size
+})
+local autoenchantrod_ddm = TabBackpack:Dropdown({
+    Title = "Select Enchant",
+    Values = { "Category A", "Category B", "Category C" },
+    Value = { "Category A" },
+    Multi = true,
+    AllowNone = true,
+    Callback = function(option) 
+        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    end
+})
+
+local autoenchantrod_tgl = TabAutomation:Toggle({
+    Title = "Auto Enchant Rod",
+    Desc  = "Will stopped at Selected Enchant",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
+
+--- Auto Gift
+local autogift_sec = TabAutomation:Section({ 
     Title = "Auto Gift",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
 
-local autogiftplayer_dd = TabBackpack:Dropdown({
+local autogiftplayer_dd = TabAutomation:Dropdown({
     Title = "Select Player",
     Values = { "Category A", "Category B", "Category C" },
     Value = "Category A",
@@ -704,8 +732,17 @@ local autogiftplayer_dd = TabBackpack:Dropdown({
     end
 })
 
-local autogift_tgl = TabBackpack:Toggle({
+local autogift_tgl = TabAutomation:Toggle({
     Title = "Auto Gift Fish",
+    Desc  = "Auto Gift held Fish/Item",
+    Default = false,
+    Callback = function(state) 
+        print("Toggle Activated" .. tostring(state))
+    end
+})
+
+local autogiftacc_tgl = TabAutomation:Toggle({
+    Title = "Auto Accept Gift",
     Desc  = "Auto Gift held Fish/Item",
     Default = false,
     Callback = function(state) 
