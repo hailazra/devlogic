@@ -8,7 +8,7 @@
 --  - Berhenti otomatis saat dapet target (atau toggle off / kehabisan stone)
 --
 -- Kebutuhan:
---  - InventoryWatcher (typed/akurat) -> di-pass lewat options.watcher
+--  - InventoryWatcher (typed/akurat) -> di‑pass lewat options.watcher
 --    atau set options.attemptAutoWatcher = true (coba require sendiri)
 --  - ReplicatedStorage.Enchants (ModuleScripts berisi Data.Id & Data.Name)
 --========================================================
@@ -142,18 +142,18 @@ function Auto.new(opts)
     end
 
     local self = setmetatable({
-        _watcher     = watcher,       -- disarankan inject watcher kamu
-        _enabled     = false,
-        _running     = false,
-        _slot        = tonumber(opts.hotbarSlot or 3), -- default 3 (2..5 biasanya aman)
-        _delay       = tonumber(opts.rollDelay or 0.35),
-        _timeout     = tonumber(opts.rollResultTimeout or 6.0),
-        _targetsById = {},            -- set[int] = true
-        _targetsByName = {},          -- set[name] = true (display)
-        _mapId2Name  = {},
-        _mapName2Id  = {},
-        _evRoll      = Instance.new("BindableEvent"), -- signal untuk hasil roll (Id)
-        _conRoll     = nil,
+        _watcher       = watcher,       -- disarankan inject watcher kamu
+        _enabled       = false,
+        _running       = false,
+        _slot          = tonumber(opts.hotbarSlot or 3), -- default 3 (2..5 biasanya aman)
+        _delay         = tonumber(opts.rollDelay or 0.35),
+        _timeout       = tonumber(opts.rollResultTimeout or 6.0),
+        _targetsById   = {},            -- set[int] = true
+        _targetsByName = {},            -- set[name] = true (display)
+        _mapId2Name    = {},
+        _mapName2Id    = {},
+        _evRoll        = Instance.new("BindableEvent"), -- signal untuk hasil roll (Id)
+        _conRoll       = nil,
     }, Auto)
 
     -- Enchant index
@@ -239,7 +239,7 @@ function Auto:_attachRollListener()
     self._conRoll = re.OnClientEvent:Connect(function(...)
         -- Arg #2 = Id enchant (sesuai file listener kamu)
         local args = table.pack(...)
-        local id = tonumber(args[2]) -- hati-hati: beberapa game pakai #1, disesuaikan kalau perlu
+        local id = tonumber(args[2]) -- hati‑hati: beberapa game pakai #1, disesuaikan kalau perlu
         if id then
             self._evRoll:Fire(id)
         end
@@ -430,9 +430,94 @@ function Auto:_runLoop()
     self._running = false
 end
 
--- ==== Module export ====
-local autoenchantrodFeature = {
-    new = Auto.new,
-}
+-- ==== Feature wrapper ====
+-- The original script exported only Auto.new, which is insufficient for our UI.
+-- Here we provide a wrapper implementing Init, Start, Stop and other methods expected by fishit.lua.
 
-return autoenchantrodFeature
+local AutoEnchantRodFeature = {}
+AutoEnchantRodFeature.__index = AutoEnchantRodFeature
+
+-- Initialize the feature. Accepts optional controls table (unused here).
+function AutoEnchantRodFeature:Init(controls)
+    -- Attempt to use an injected watcher from controls (if provided)
+    local watcher = nil
+    if controls and controls.watcher then
+        watcher = controls.watcher
+    end
+    -- Create underlying Auto instance.
+    -- If no watcher is provided we allow Auto to auto create one via attemptAutoWatcher = true.
+    self._auto = Auto.new({
+        watcher = watcher,
+        attemptAutoWatcher = watcher == nil
+    })
+    return true
+end
+
+-- Return a list of all available enchant names.
+function AutoEnchantRodFeature:GetEnchantNames()
+    local names = {}
+    if not self._auto then return names end
+    for name, _ in pairs(self._auto._mapName2Id) do
+        table.insert(names, name)
+    end
+    table.sort(names)
+    return names
+end
+
+-- Set desired enchant targets by their names.
+function AutoEnchantRodFeature:SetDesiredByNames(names)
+    if self._auto then
+        self._auto:setTargetsByNames(names)
+    end
+end
+
+-- Alternate setter: set desired enchant targets by their ids.
+function AutoEnchantRodFeature:SetDesiredByIds(ids)
+    if self._auto then
+        self._auto:setTargetsByIds(ids)
+    end
+end
+
+-- Start auto enchant logic using provided config.
+-- config.delay        -> number: delay between rolls
+-- config.enchantNames -> table of enchant names to target
+-- config.hotbarSlot   -> optional slot override
+function AutoEnchantRodFeature:Start(config)
+    if not self._auto then return end
+    config = config or {}
+    -- update delay if provided
+    if config.delay then
+        local d = tonumber(config.delay)
+        if d then
+            self._auto._delay = d
+        end
+    end
+    -- set targets by names
+    if config.enchantNames then
+        self:SetDesiredByNames(config.enchantNames)
+    end
+    -- optional slot override
+    if config.hotbarSlot then
+        self._auto:setHotbarSlot(config.hotbarSlot)
+    end
+    -- start the automation
+    self._auto:start()
+end
+
+-- Stop the automation gracefully.
+function AutoEnchantRodFeature:Stop()
+    if self._auto then
+        self._auto:stop()
+    end
+end
+
+-- Cleanup resources and destroy the underlying Auto instance.
+function AutoEnchantRodFeature:Cleanup()
+    if self._auto then
+        self._auto:destroy()
+        self._auto = nil
+    end
+end
+
+-- Return the feature table with methods available via colon syntax.
+return setmetatable(AutoEnchantRodFeature, AutoEnchantRodFeature)
