@@ -659,13 +659,6 @@ local favfish_tgl = TabBackpack:Toggle({
                     toggle   = favfish_tgl,
                     watcher  = _G.invWatcher or _G.InventoryWatcherInstance -- inject watcher jika ada
                 })
-                
-                -- Refresh dropdown dengan tier asli dari game
-                if autoFavFishFeature then
-                    task.spawn(function()
-                        task.wait(0.5) -- tunggu Init selesai
-                        refreshTierListFromFeature()
-                    end)
                 end
             end
 
