@@ -45,7 +45,8 @@ local FEATURE_URLS = {
     AutoTeleportEvent  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportevent.lua",
     AutoGearOxyRadar   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autogearoxyradar.lua",
     AntiAfk            = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/antiafk.lua", 
-    AutoEnchantRod     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoenchantrodv1.lua" 
+    AutoEnchantRod     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoenchantrodv1.lua",
+    AutoFavoriteFish   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofavoritefish.lua" 
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -621,25 +622,44 @@ local favfish_sec = TabBackpack:Section({
     TextSize = 17, -- Default Size
 })
 
+local autoFavFishFeature = nil
+local selectedTiers  = {}
+
 local favfish_ddm = TabBackpack:Dropdown({
     Title = "Select Rarity",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = { "Category A" },
+    Values = { "SECRET", "Mythic", "Legendary" },
+    Value = {},
     Multi = true,
     AllowNone = true,
-    Callback = function(option) 
-        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    -- options adalah array nama enchant yang dipilih
+        selectedTiers = options or {}
+        -- Jika fitur sudah ada, update target
+        if autoFavFishFeature and autoFavFishFeature.SetDesiredTiersByNames then
+            autoFavFishFeature:SetDesiredTiersByNames(selectedTiers)
+        end
     end
 })
 
 local favfish_tgl = TabBackpack:Toggle({
     Title = "Auto Favorite Fish",
     Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+    Callback = function(state)
+        if state then
+            if not selectedTiers or #selectedTiers == 0 then
+                warn("[autofavoritefish] pilih minimal 1 tier dulu.")
+                if tgl_fav.Set then tgl_fav:Set(false) end
+                return
+            end
+            fav:Start({
+                tierNames = selectedTiers,
+                delay     = 0.12,   -- jeda antar FavoriteItem
+                maxPerTick= 10,     -- batas per siklus untuk safety
+            })
+        else
+            fav:Stop()
+        end
     end
 })
-
 --- Sell Fish
 local sellfish_sec = TabBackpack:Section({ 
     Title = "Sell Fish",
