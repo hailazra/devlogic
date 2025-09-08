@@ -631,6 +631,7 @@ local favfish_ddm = TabBackpack:Dropdown({
     Value = {},
     Multi = true,
     AllowNone = true,
+    Callback  = function(options)
     -- options adalah array nama enchant yang dipilih
         selectedTiers = options or {}
         -- Jika fitur sudah ada, update target
