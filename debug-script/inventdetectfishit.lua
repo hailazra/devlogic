@@ -1,5 +1,5 @@
 -- inventory_watcher_v2.lua
--- Lintas kategori + aware equip & autosell threshold
+-- Lintas kategori + aware equip & autosell threshold + DUMP HELPERS
 
 local InventoryWatcher = {}
 InventoryWatcher.__index = InventoryWatcher
@@ -8,6 +8,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Replion     = require(ReplicatedStorage.Packages.Replion)
 local Constants   = require(ReplicatedStorage.Shared.Constants)
 local ItemUtility = require(ReplicatedStorage.Shared.ItemUtility)
+
+-- (baru) StringLibrary opsional untuk format berat
+local StringLib = nil
+pcall(function() StringLib = require(ReplicatedStorage.Shared.StringLibrary) end)
 
 -- Kategori yang diketahui oleh game (lihat InventoryController)
 local KNOWN_KEYS = { "Items", "Fishes", "Potions", "Baits", "Fishing Rods" }
@@ -56,6 +60,49 @@ local function shallowCopyArray(t)
     local out = {}
     if type(t)=="table" then for i,v in ipairs(t) do out[i]=v end end
     return out
+end
+
+-- (baru) amanin call ItemUtility:Method(...) (dot/colon)
+local function IU(method, ...)
+    local f = ItemUtility and ItemUtility[method]
+    if type(f) == "function" then
+        local ok, res = pcall(f, ItemUtility, ...)
+        if ok then return res end
+    end
+    return nil
+end
+
+-- (baru) resolver nama item per kategori
+function InventoryWatcher:_resolveName(category, id)
+    if not id then return "<?>"
+    end
+    if category == "Baits" then
+        local d = IU("GetBaitData", id)
+        if d and d.Data and d.Data.Name then return d.Data.Name end
+    elseif category == "Potions" then
+        local d = IU("GetPotionData", id)
+        if d and d.Data and d.Data.Name then return d.Data.Name end
+    elseif category == "Fishing Rods" then
+        -- beberapa game pakai ItemData generic untuk rod
+        local d = IU("GetItemData", id)
+        if d and d.Data and d.Data.Name then return d.Data.Name end
+    end
+    -- generic per tipe
+    local d2 = IU("GetItemDataFromItemType", category, id)
+    if d2 and d2.Data and d2.Data.Name then return d2.Data.Name end
+    local d3 = IU("GetItemData", id)
+    if d3 and d3.Data and d3.Data.Name then return d3.Data.Name end
+    return tostring(id)
+end
+
+-- (baru) format berat kalau ada util; fallback "xkg"
+function InventoryWatcher:_fmtWeight(w)
+    if not w then return nil end
+    if StringLib and StringLib.AddWeight then
+        local ok, txt = pcall(function() return StringLib:AddWeight(w) end)
+        if ok and txt then return txt end
+    end
+    return tostring(w).."kg"
 end
 
 function InventoryWatcher:_classifyEntry(hintKey, entry)
@@ -209,6 +256,47 @@ function InventoryWatcher:getAutoSellThreshold()
     return ok and val or nil
 end
 
+-- ===== Dump Helpers (BARU) =====
+
+-- Print isi kategori (nama, UUID, metadata penting)
+-- category: "Items"|"Fishes"|"Potions"|"Baits"|"Fishing Rods"
+-- limit (opsional): jumlah maksimum row yang diprint (default 200)
+function InventoryWatcher:dumpCategory(category, limit)
+    limit = tonumber(limit) or 200
+    if not table.find(KNOWN_KEYS, category) then
+        warn("[InventoryWatcher] dumpCategory: kategori tidak dikenal ->", tostring(category))
+        return
+    end
+    local arr = self:getSnapshot(category)
+    print(("-- %s (%d) --"):format(category, #arr))
+    for i, entry in ipairs(arr) do
+        if i > limit then
+            print(("... truncated at %d"):format(limit))
+            break
+        end
+        local id    = entry.Id or entry.id
+        local uuid  = entry.UUID or entry.Uuid or entry.uuid
+        local meta  = entry.Metadata or {}
+        local name  = self:_resolveName(category, id)
+
+        if category == "Fishes" then
+            local w  = self:_fmtWeight(meta.Weight)
+            local v  = meta.VariantId or meta.Mutation or meta.Variant
+            local sh = (meta.Shiny == true) and "★" or ""
+            print(i, name, uuid or "-", w or "-", v or "-", sh)
+        else
+            print(i, name, uuid or "-")
+        end
+    end
+end
+
+-- Print semua kategori
+function InventoryWatcher:dumpAll(limit)
+    for _, key in ipairs(KNOWN_KEYS) do
+        self:dumpCategory(key, limit)
+    end
+end
+
 function InventoryWatcher:destroy()
     for _,c in ipairs(self._conns) do pcall(function() c:Disconnect() end) end
     table.clear(self._conns)
@@ -219,28 +307,3 @@ end
 
 return InventoryWatcher
 
-
---[[ cara pakai :
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local InventoryWatcher = loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
-local inv = InventoryWatcher.new()
-
-inv:onReady(function()
-    local total,max,free = inv:getTotals()
-    local byType = inv:getCountsByType()
-    print(("[INV] %d/%d (free %d) | Fishes=%d, Items=%d, Potions=%d, Baits=%d, Rods=%d")
-        :format(total,max,free, byType.Fishes,byType.Items,byType.Potions,byType.Baits,byType["Fishing Rods"]))
-    print("Equipped bait:", inv:getEquippedBaitId(), "AutoSellThreshold:", inv:getAutoSellThreshold())
-end)
-
-inv:onChanged(function(total,max,free,byType)
-    -- contoh trigger: aktifkan autosell kalau slot tinggal <= 3
-    if free <= 3 then
-        -- autosellFeature:RunOnce()
-    end
-end)
-
-inv:onEquipChanged(function(equippedSet, baitId)
-    -- contoh: pastikan rod tertentu ter-equip sebelum mulai mancing
-    -- if not equippedSet[targetUUID] then EquipItem:FireServer(targetUUID, "Fishing Rods") end
-end)]]
