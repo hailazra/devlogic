@@ -28,6 +28,28 @@ pcall(function()
 end)
 _G.NetPath = NetPath
 
+-- === [NEW] Inventory Watcher bootstrap ===
+local function ensureInventoryWatcher()
+    if _G.invWatcher and _G.invWatcher._destroyed ~= true then
+        return _G.invWatcher
+    end
+    local ok, InventoryWatcherOrErr = pcall(function()
+        return loadstring(game:HttpGet(
+            "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/inventdetectfishit.lua"
+        ))()
+    end)
+    if ok and InventoryWatcherOrErr then
+        local watcher = InventoryWatcherOrErr.new()
+        _G.invWatcher = watcher
+        _G.InventoryWatcherInstance = watcher
+        return watcher
+    else
+        warn("[fishit] Failed to load InventoryWatcher:", tostring(InventoryWatcherOrErr))
+        return nil
+    end
+end
+
+
 -- ===========================
 -- FEATURE MANAGER
 -- ===========================
@@ -634,8 +656,6 @@ local favfish_ddm = TabBackpack:Dropdown({
     AllowNone = true,
     Callback  = function(options)
         selectedTiers = options or {}
-        print("[AutoFavoriteFish] Selected tiers:", game:GetService("HttpService"):JSONEncode(selectedTiers))
-        
         -- Update feature jika sudah dimuat
         if autoFavFishFeature and autoFavFishFeature.SetDesiredTiersByNames then
             autoFavFishFeature:SetDesiredTiersByNames(selectedTiers)
@@ -643,94 +663,86 @@ local favfish_ddm = TabBackpack:Dropdown({
     end
 })
 
+-- === [NEW] reload dropdown rarity dari game ===
+local function refreshTierListFromFeature()
+    if autoFavFishFeature and autoFavFishFeature.GetTierNames then
+        local tiers = autoFavFishFeature:GetTierNames()
+        if type(tiers) == "table" and #tiers > 0 then
+            if favfish_ddm.Reload then
+                favfish_ddm:Reload(tiers)
+            elseif favfish_ddm.SetOptions then
+                favfish_ddm:SetOptions(tiers)
+            else
+                warn("[fishit] Dropdown missing Reload/SetOptions; keep fallback values")
+            end
+        end
+    end
+end
+
+
 
 local favfish_tgl = TabBackpack:Toggle({
     Title   = "Auto Favorite Fish",
     Desc    = "Automatically favorite fish with selected rarities",
     Default = false,
     Callback = function(state)
-        print("[AutoFavoriteFish] Toggle:", state)
-        
         if state then
-            -- Load feature jika belum ada
-            if not autoFavFishFeature then
-                print("[AutoFavoriteFish] Loading feature...")
-                autoFavFishFeature = FeatureManager:LoadFeature("AutoFavoriteFish", {
-                    dropdown = favfish_ddm,
-                    toggle   = favfish_tgl,
-                    watcher  = _G.invWatcher or _G.InventoryWatcherInstance -- inject watcher jika ada
-                })
-            end
+    -- [PATCH] pastikan watcher ada
+    local watcher = _G.invWatcher or _G.InventoryWatcherInstance or ensureInventoryWatcher()
 
-            -- Validasi: pastikan ada tier yang dipilih
-            if not selectedTiers or #selectedTiers == 0 then
-                WindUI:Notify({ 
-                    Title = "Info", 
-                    Content = "Select at least 1 rarity first", 
-                    Icon = "info", 
-                    Duration = 3 
-                })
-                return
-            end
+    -- Load feature jika belum ada
+    if not autoFavFishFeature then
+        print("[AutoFavoriteFish] Loading feature...")
+        autoFavFishFeature = FeatureManager:LoadFeature("AutoFavoriteFish", {
+            dropdown = favfish_ddm,
+            toggle   = favfish_tgl,
+            watcher  = watcher,  -- <- injeksi watcher
+        })
 
-            -- Validasi: feature harus berhasil dimuat
-            if not autoFavFishFeature then
-                WindUI:Notify({ 
-                    Title = "Failed", 
-                    Content = "Could not load AutoFavoriteFish feature", 
-                    Icon = "x", 
-                    Duration = 3 
-                })
-                return
-            end
-
-            -- Start auto favorite
-            print("[AutoFavoriteFish] Starting with tiers:", table.concat(selectedTiers, ", "))
-            if autoFavFishFeature.Start then
-                local success = autoFavFishFeature:Start({
-                    tierNames   = selectedTiers, -- array nama tier
-                    delay       = 0.10,          -- jeda antar favorite
-                    maxPerTick  = 15,            -- batch size per tick
-                })
-                
-                if success then
-                    WindUI:Notify({ 
-                        Title = "Started", 
-                        Content = "Auto Favorite Fish is now active", 
-                        Icon = "check", 
-                        Duration = 2 
-                    })
-                else
-                    favfish_tgl:Set(false)
-                    WindUI:Notify({ 
-                        Title = "Failed", 
-                        Content = "Could not start Auto Favorite Fish", 
-                        Icon = "x", 
-                        Duration = 3 
-                    })
-                end
-            else
-                favfish_tgl:Set(false)
-                WindUI:Notify({ 
-                    Title = "Error", 
-                    Content = "Start method not available", 
-                    Icon = "x", 
-                    Duration = 3 
-                })
-            end
-        else
-            -- Stop auto favorite
-            if autoFavFishFeature and autoFavFishFeature.Stop then
-                autoFavFishFeature:Stop()
-                WindUI:Notify({ 
-                    Title = "Stopped", 
-                    Content = "Auto Favorite Fish disabled", 
-                    Icon = "info", 
-                    Duration = 2 
-                })
-            end
+        -- setelah Init, reload options rarity dari game
+        if autoFavFishFeature then
+            task.spawn(function()
+                task.wait(0.5) -- beri waktu Init
+                refreshTierListFromFeature()
+            end)
         end
     end
+
+    -- Validasi pilihan tier
+    if not selectedTiers or #selectedTiers == 0 then
+        WindUI:Notify({
+            Title   = "Info",
+            Content = "Select at least 1 rarity first",
+            Icon    = "info",
+            Duration = 2
+        })
+        favfish_tgl:Set(false)
+        return
+    end
+
+    -- Start
+    print("[AutoFavoriteFish] Starting with tiers:", table.concat(selectedTiers, ", "))
+    if autoFavFishFeature and autoFavFishFeature.Start then
+        local ok = autoFavFishFeature:Start({
+            tierNames  = selectedTiers,
+            delay      = 0.10,   -- aman dari throttling
+            maxPerTick = 15,
+        })
+        if ok then
+            WindUI:Notify({ Title="Started", Content="Auto Favorite Fish is now active", Icon="check", Duration=2 })
+        else
+            favfish_tgl:Set(false)
+            WindUI:Notify({ Title="Failed", Content="Could not start Auto Favorite Fish", Icon="x", Duration=3 })
+        end
+    else
+        favfish_tgl:Set(false)
+        WindUI:Notify({ Title="Failed", Content="Could not load AutoFavoriteFish feature", Icon="x", Duration=3 })
+    end
+else
+    if autoFavFishFeature and autoFavFishFeature.Stop then
+        autoFavFishFeature:Stop()
+    end
+end
 })
 
 --- Sell Fish
