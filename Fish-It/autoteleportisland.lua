@@ -111,9 +111,6 @@ function AutoTeleportIsland:Init(guiControls)
     print("[AutoTeleportIsland] Initialized successfully")
     return true
 end
-if _G.FeatureManager and _G.FeatureManager.RegisterDropdown then
-        _G.FeatureManager:RegisterDropdown("AutoTeleportIsland", guiControls.dropdown, "GetAvailableIslands")
-    end
 
 function AutoTeleportIsland:SetIsland(islandName)
     if STATIC_ISLAND_CFRAMES[islandName] or ISLAND_MAPPING[islandName] then
@@ -193,11 +190,6 @@ function AutoTeleportIsland:Cleanup()
     print("[AutoTeleportIsland] Cleaning up...")
     controls = {}
     isInitialized = false
-end
-
-function AutoTeleportIsland:GetAvailableIslands()
-    -- Return list island names
-    return {"Fisherman Island", "Esoteric Depths", "Enchant Altar", "Kohana", "Kohana Volcano", "Tropical Grove", "Crater Island", "Coral Reefs", "Sisyphus Statue", "Treasure Room"}
 end
 
 return AutoTeleportIsland
