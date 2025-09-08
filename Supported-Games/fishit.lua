@@ -664,18 +664,20 @@ local favfish_tgl = TabBackpack:Toggle({
 
             -- Validasi: pastikan ada tier yang dipilih
             if not selectedTiers or #selectedTiers == 0 then
+                favfish_tgl:Set(false)
                 WindUI:Notify({ 
                     Title = "Info", 
                     Content = "Select at least 1 rarity first", 
                     Icon = "info", 
                     Duration = 3 
                 })
-                favfish_tgl:Set(false)
+                
                 return
             end
 
             -- Validasi: feature harus berhasil dimuat
             if not autoFavFishFeature then
+                favfish_tgl:Set(false)
                 WindUI:Notify({ 
                     Title = "Failed", 
                     Content = "Could not load AutoFavoriteFish feature", 
