@@ -297,3 +297,5 @@ getgenv().DevlogicInv = {
 }
 
 print("[inventory_watcher] loaded. Use DevlogicInv.dump('Items') / DevlogicInv.dumpAll().")
+
+return InventoryWatcher
