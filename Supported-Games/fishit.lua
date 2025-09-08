@@ -670,7 +670,6 @@ local favfish_tgl = TabBackpack:Toggle({
                 autoFavFishFeature = FeatureManager:LoadFeature("AutoFavoriteFish", {
                     dropdown = favfish_ddm,
                     toggle   = favfish_tgl,
-                    watcher  = watcher -- <- tidak ada trailing comma
                 })
 
                 -- setelah Init, reload options rarity dari game
