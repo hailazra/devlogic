@@ -129,11 +129,6 @@ function AutoBuyWeather:Init(guiControls)
     -- initial scan
     buyableMap = scanBuyables()
 
-    if _G.FeatureManager and _G.FeatureManager.RegisterDropdown then
-        _G.FeatureManager:RegisterDropdown("AutoBuyWeather", guiControls.weatherDropdownMulti, "GetBuyableWeathers")
-        print("[AutoBuyWeather] Dropdown registered for auto-populate")
-    end
-
     -- jika GUI multi-dropdown disuplai, isi opsinya
     if guiControls and guiControls.weatherDropdownMulti then
         local dd = guiControls.weatherDropdownMulti
