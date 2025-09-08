@@ -721,48 +721,42 @@ local enchant_ddm = TabAutomation:Dropdown({
 
 -- Toggle
 local enchant_tgl = TabAutomation:Toggle({
-    Title   = "Auto Enchant Rod",
+    Title = "Auto Enchant Rod",
     Default = false,
     Callback = function(on)
         if on then
-            if not enchantFeature then
-                enchantFeature = FeatureManager:LoadFeature("AutoEnchantRod", {
+            if not autoEnchant then
+                autoEnchant = FeatureManager:LoadFeature("AutoEnchantRod", {
                     enchantDropdownMulti = enchant_ddm,
                     toggle               = enchant_tgl,
                 })
-                -- isi dropdown dengan data asli dari modul
-                if enchantFeature and enchantFeature.GetEnchantNames then
-                    local names = enchantFeature:GetEnchantNames()
-                    if enchant_ddm.Reload then
-                        enchant_ddm:Reload(names)
-                    elseif enchant_ddm.SetOptions then
-                        enchant_ddm:SetOptions(names)
-                    end
+                if autoEnchant and autoEnchant.GetEnchantNames then
+                    local names = autoEnchant:GetEnchantNames()
+                    if enchant_ddm.Reload then enchant_ddm:Reload(names) end
                 end
             end
 
-            if next(selectedEnchantSet) == nil then
+            if next(selectedSet) == nil then
                 WindUI:Notify({ Title="Info", Content="Select at least 1 enchant", Icon="info", Duration=3 })
                 enchant_tgl:Set(false); return
             end
 
-            if enchantFeature and enchantFeature.Start then
-                enchantFeature:Start({
-                    enchantNames = (function()
-                        local arr = {}
-                        for name,_ in pairs(selectedEnchantSet) do table.insert(arr, name) end
-                        table.sort(arr); return arr
-                    end)(),
-                    delay = 0.35
+            if autoEnchant and autoEnchant.Start then
+                -- biarkan modul menangkap StoneUUID otomatis saat kamu equip manual sekali
+                local namesArray = {}
+                for n,_ in pairs(selectedSet) do table.insert(namesArray, n) end
+                table.sort(namesArray)
+                autoEnchant:Start({
+                    enchantNames = namesArray,
+                    delay        = 0.6,   -- aman default
                 })
+                WindUI:Notify({ Title="Tip", Content="Equip Enchant Stone sekali untuk auto-capture UUID.", Icon="info", Duration=4 })
             else
                 enchant_tgl:Set(false)
                 WindUI:Notify({ Title="Failed", Content="Could not start AutoEnchantRod", Icon="x", Duration=3 })
             end
         else
-            if enchantFeature and enchantFeature.Stop then
-                enchantFeature:Stop()
-            end
+            if autoEnchant and autoEnchant.Stop then autoEnchant:Stop() end
         end
     end
 })
