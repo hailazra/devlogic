@@ -632,9 +632,7 @@ local favfish_ddm = TabBackpack:Dropdown({
     Multi = true,
     AllowNone = true,
     Callback  = function(options)
-    -- options adalah array nama enchant yang dipilih
         selectedTiers = options or {}
-        -- Jika fitur sudah ada, update target
         if autoFavFishFeature and autoFavFishFeature.SetDesiredTiersByNames then
             autoFavFishFeature:SetDesiredTiersByNames(selectedTiers)
         end
