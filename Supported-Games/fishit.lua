@@ -44,7 +44,8 @@ local FEATURE_URLS = {
     AutoBuyRod         = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyrod.lua",
     AutoTeleportEvent  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportevent.lua",
     AutoGearOxyRadar   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autogearoxyradar.lua",
-    AntiAfk            = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/antiafk.lua"
+    AntiAfk            = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/antiafk.lua", 
+    AutoEnchantRod     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoenchantrod.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -696,23 +697,73 @@ local autoenchantrod_sec = TabAutomation:Section({
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
-local autoenchantrod_ddm = TabBackpack:Dropdown({
-    Title = "Select Enchant",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = { "Category A" },
-    Multi = true,
+
+local enchantFeature = nil
+local selectedEnchantSet = {}
+
+-- Dropdown multi
+local enchant_ddm = TabAutomation:Dropdown({
+    Title     = "Select Enchants",
+    Values    = {"Cursed I", "Leprechaun I", "Gold Digger I" },       -- akan diisi setelah modul diload
+    Value     = {},
+    Multi     = true,
     AllowNone = true,
-    Callback = function(option) 
-        print("Categories selected: " ..game:GetService("HttpService"):JSONEncode(option)) 
+    Callback  = function(options)
+        selectedEnchantSet = {}
+        for _, name in ipairs(options or {}) do
+            selectedEnchantSet[name] = true
+        end
+        if enchantFeature and enchantFeature.SetDesiredByNames then
+            enchantFeature:SetDesiredByNames(options or {})
+        end
     end
 })
 
-local autoenchantrod_tgl = TabAutomation:Toggle({
-    Title = "Auto Enchant Rod",
-    Desc  = "Will stopped at Selected Enchant",
+-- Toggle
+local enchant_tgl = TabAutomation:Toggle({
+    Title   = "Auto Enchant Rod",
     Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+    Callback = function(on)
+        if on then
+            if not enchantFeature then
+                enchantFeature = FeatureManager:LoadFeature("AutoEnchantRod", {
+                    enchantDropdownMulti = enchant_ddm,
+                    toggle               = enchant_tgl,
+                })
+                -- isi dropdown dengan data asli dari modul
+                if enchantFeature and enchantFeature.GetEnchantNames then
+                    local names = enchantFeature:GetEnchantNames()
+                    if enchant_ddm.Reload then
+                        enchant_ddm:Reload(names)
+                    elseif enchant_ddm.SetOptions then
+                        enchant_ddm:SetOptions(names)
+                    end
+                end
+            end
+
+            if next(selectedEnchantSet) == nil then
+                WindUI:Notify({ Title="Info", Content="Select at least 1 enchant", Icon="info", Duration=3 })
+                enchant_tgl:Set(false); return
+            end
+
+            if enchantFeature and enchantFeature.Start then
+                enchantFeature:Start({
+                    enchantNames = (function()
+                        local arr = {}
+                        for name,_ in pairs(selectedEnchantSet) do table.insert(arr, name) end
+                        table.sort(arr); return arr
+                    end)(),
+                    delay = 0.35
+                })
+            else
+                enchant_tgl:Set(false)
+                WindUI:Notify({ Title="Failed", Content="Could not start AutoEnchantRod", Icon="x", Duration=3 })
+            end
+        else
+            if enchantFeature and enchantFeature.Stop then
+                enchantFeature:Stop()
+            end
+        end
     end
 })
 
