@@ -623,13 +623,26 @@ local favfish_sec = TabBackpack:Section({
 })
 
 local autoFavFishFeature = nil
-local selectedTiers  = {}
+local selectedTiers = {}
+
+-- Preload tier names (fallback) langsung dari ReplicatedStorage.Tiers
+local function preloadTierNames()
+    local names = {}
+    local ok, tiers = pcall(function() return require(game:GetService("ReplicatedStorage"):WaitForChild("Tiers")) end)
+    if ok and type(tiers) == "table" then
+        table.sort(tiers, function(a,b) return (a.Tier or 99) < (b.Tier or 99) end)
+        for _, t in ipairs(tiers) do
+            if t and t.Name then table.insert(names, t.Name) end
+        end
+    end
+    return (#names > 0) and names or { "SECRET", "Mythic", "Legendary" }
+end
 
 local favfish_ddm = TabBackpack:Dropdown({
-    Title = "Select Rarity",
-    Values = { "SECRET", "Mythic", "Legendary" },
-    Value = {},
-    Multi = true,
+    Title     = "Select Rarity",
+    Values    = preloadTierNames(), -- akan di-reload setelah modul fitur diload
+    Value     = {},
+    Multi     = true,
     AllowNone = true,
     Callback  = function(options)
         selectedTiers = options or {}
@@ -640,27 +653,53 @@ local favfish_ddm = TabBackpack:Dropdown({
 })
 
 local favfish_tgl = TabBackpack:Toggle({
-    Title = "Auto Favorite Fish",
+    Title   = "Auto Favorite Fish",
     Default = false,
     Callback = function(state)
         if state then
+            -- Harus pilih minimal 1 tier
             if not selectedTiers or #selectedTiers == 0 then
-                warn("[autofavoritefish] pilih minimal 1 tier dulu.")
-                if tgl_fav.Set then tgl_fav:Set(false) end
+                WindUI:Notify({ Title="Info", Content="Select at least one rarity first", Icon="info", Duration=3 })
+                if favfish_tgl.Set then favfish_tgl:Set(false) end
                 return
             end
-           if autoFavFishFeature and autoFavFishFeature.Start then
+
+            -- Load modul fitur kalau belum
+            if not autoFavFishFeature then
+                autoFavFishFeature = FeatureManager:LoadFeature("AutoFavoriteFish", {
+                    rarityDropdownMulti = favfish_ddm,
+                    toggle              = favfish_tgl,
+                })
+                -- Sesudah Init, minta nama tier dari modul biar konsisten
+                if autoFavFishFeature and autoFavFishFeature.GetTierNames then
+                    local names = autoFavFishFeature:GetTierNames()
+                    if favfish_ddm.Reload then
+                        favfish_ddm:Reload(names)
+                    elseif favfish_ddm.SetOptions then
+                        favfish_ddm:SetOptions(names)
+                    end
+                end
+            end
+
+            -- Start
+            if autoFavFishFeature and autoFavFishFeature.Start then
                 autoFavFishFeature:Start({
-                    tierNames = selectedTiers,
-                    delay     = 0.12,   -- jeda antar FavoriteItem
-                    maxPerTick= 10,
+                    tierNames = selectedTiers, -- array nama: {"Legendary","Mythic",...}
+                    delay     = 0.12,          -- jeda antar FavoriteItem (anti-spam)
+                    maxPerTick= 10,            -- batch size per loop
                 })
             else
-                if autoFavFishFeature and autoFavFishFeature.Stop then
+                favfish_tgl:Set(false)
+                WindUI:Notify({ Title="Failed", Content="Could not start AutoFavoriteFish", Icon="x", Duration=3 })
+            end
+        else
+            if autoFavFishFeature and autoFavFishFeature.Stop then
                 autoFavFishFeature:Stop()
+            end
         end
     end
 })
+
 --- Sell Fish
 local sellfish_sec = TabBackpack:Section({ 
     Title = "Sell Fish",
