@@ -717,15 +717,6 @@ local favfish_tgl = TabBackpack:Toggle({
                         Duration = 3
                     })
                 end
-            else
-                favfish_tgl:Set(false)
-                WindUI:Notify({
-                    Title    = "Failed",
-                    Content  = "Could not load AutoFavoriteFish feature",
-                    Icon     = "x",
-                    Duration = 3
-                })
-            end
         else
             if autoFavFishFeature and autoFavFishFeature.Stop then
                 autoFavFishFeature:Stop()
