@@ -704,7 +704,7 @@ local selectedEnchants   = {}
 -- Dropdown multi
 local enchant_ddm = TabAutomation:Dropdown({
     Title     = "Select Enchants",
-    Values    = { "Cursed I", "Leprechaun II", "Gold Digger I", "Mutation Hunter I" },       -- akan diisi saat modul diload
+    Values    = {"Cursed I", "Leprechaun II", "Gold Digger I", "Mutation Hunter I" },       -- akan diisi saat modul diload
     Value     = {},
     Multi     = true,
     AllowNone = true,
