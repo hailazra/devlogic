@@ -649,13 +649,15 @@ local favfish_tgl = TabBackpack:Toggle({
                 if tgl_fav.Set then tgl_fav:Set(false) end
                 return
             end
-            fav:Start({
-                tierNames = selectedTiers,
-                delay     = 0.12,   -- jeda antar FavoriteItem
-                maxPerTick= 10,     -- batas per siklus untuk safety
-            })
-        else
-            fav:Stop()
+           if autoFavFishFeature and autoFavFishFeature.Start then
+                autoFavFishFeature:Start({
+                    tierNames = selectedTiers,
+                    delay     = 0.12,   -- jeda antar FavoriteItem
+                    maxPerTick= 10,
+                })
+            else
+                if autoFavFishFeature and autoFavFishFeature.Stop then
+                autoFavFishFeature:Stop()
         end
     end
 })
