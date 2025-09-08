@@ -1,283 +1,439 @@
--- ==========================================
--- Feature: autoenchantrod
--- Flow   : Equip Enchant Stone -> Activate Altar -> Wait result -> repeat
--- Stop   : Ketika RE/RollEnchant (OnClientEvent) mengirim enchantId yg match
--- Notes  : Menangkap UUID Enchant Stone otomatis dari RE/EquipItem ("EnchantStones")
--- ==========================================
+--========================================================
+-- autoenchantrodFeature.lua
+--========================================================
+-- Fitur:
+--  - Filter Enchant Stones dari inventory (via InventoryWatcher)
+--  - Equip ke Hotbar -> Equip tool dari slot -> Activate altar
+--  - Listen RE/RollEnchant (OnClientEvent) -> baca Id -> cocokkan target
+--  - Berhenti otomatis saat dapet target (atau toggle off / kehabisan stone)
+--
+-- Kebutuhan:
+--  - InventoryWatcher (typed/akurat) -> di-pass lewat options.watcher
+--    atau set options.attemptAutoWatcher = true (coba require sendiri)
+--  - ReplicatedStorage.Enchants (ModuleScripts berisi Data.Id & Data.Name)
+--========================================================
 
-local Feature = {}
-Feature.__index = Feature
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer       = Players.LocalPlayer
 
--- Services
-local RS         = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+-- ==== Remotes (pakai sleitnick_net) ====
+local REMOTE_NAMES = {
+    EquipItem               = "RE/EquipItem",
+    EquipToolFromHotbar     = "RE/EquipToolFromHotbar",
+    ActivateEnchantingAltar = "RE/ActivateEnchantingAltar",
+    RollEnchant             = "RE/RollEnchant", -- inbound
+}
 
--- Config
-local DELAY_BETWEEN_ROLLS = 0.6   -- jeda aman antar siklus
-local RESULT_TIMEOUT      = 3.0   -- kalau ga ada hasil, ulang equip+activate
-
--- State
-local running        = false
-local foundOnce      = false
-local hbConn         = nil
-local resultConn     = nil
-local watchConn      = nil
-
--- Selections
-local wantedIds      = {}   -- [id]=true
-local wantedNames    = {}   -- [normName]=true
-
--- Indices
-local EnchantsFolder = nil
-local IndexById      = {}   -- [id] = meta {Id, Name, Module}
-local IndexByName    = {}   -- [norm] = meta
-
--- Remotes
-local RollEvent              = nil  -- "RE/RollEnchant" (RemoteEvent inbound)
-local ActivateEnchantingAltar= nil  -- "RE/ActivateEnchantingAltar" (RemoteEvent)
-local EquipItem              = nil  -- "RE/EquipItem" (RemoteEvent)
-
--- Stone UUID
-local StoneUUID              = nil  -- string "xxxxxxxx-...."
-local lastResultAt           = 0
-
--- ============== Utils ==============
-local function norm(s) s = tostring(s or ""):gsub("^%s+",""):gsub("%s+$",""); return s:lower() end
-
-local function safeRequire(ms)
-    local ok, data = pcall(require, ms)
-    if not ok or type(data) ~= "table" then return end
-    local d = data.Data or {}
-    local id, name = tonumber(d.Id), d.Name
-    if not (id and name) then return end
-    return { Id = id, Name = name, Module = ms }
-end
-
-local function buildEnchantIndex()
-    EnchantsFolder = RS:FindFirstChild("Enchants")
-    if not EnchantsFolder then return end
-    table.clear(IndexById); table.clear(IndexByName)
-    for _,child in ipairs(EnchantsFolder:GetChildren()) do
-        if child:IsA("ModuleScript") then
-            local meta = safeRequire(child)
-            if meta then
-                IndexById[meta.Id] = meta
-                IndexByName[norm(meta.Name)] = meta
-            end
+-- ==== Util: cari folder net sleitnick ====
+local function findNetRoot()
+    local Packages = ReplicatedStorage:FindFirstChild("Packages")
+    if not Packages then return end
+    local _Index = Packages:FindFirstChild("_Index")
+    if not _Index then return end
+    for _, pkg in ipairs(_Index:GetChildren()) do
+        if pkg:IsA("Folder") and pkg.Name:match("^sleitnick_net@") then
+            local net = pkg:FindFirstChild("net")
+            if net then return net end
         end
     end
 end
 
-local function matches(id)
-    if not id then return false end
-    if wantedIds[id] then return true end
-    local m = IndexById[id]
-    if m and wantedNames[norm(m.Name)] then return true end
+local function getRemote(name)
+    local net = findNetRoot()
+    if net then
+        local r = net:FindFirstChild(name)
+        if r then return r end
+    end
+    -- fallback cari global
+    return ReplicatedStorage:FindFirstChild(name, true)
+end
+
+-- ==== Map Enchants (Id <-> Name) ====
+local function buildEnchantsIndex()
+    local mapById, mapByName = {}, {}
+    local enchFolder = ReplicatedStorage:FindFirstChild("Enchants")
+    if enchFolder then
+        for _, child in ipairs(enchFolder:GetChildren()) do
+            if child:IsA("ModuleScript") then
+                local ok, mod = pcall(require, child)
+                if ok and type(mod) == "table" and mod.Data then
+                    local id   = tonumber(mod.Data.Id)
+                    local name = tostring(mod.Data.Name or child.Name)
+                    if id then
+                        mapById[id] = name
+                        mapByName[name] = id
+                    end
+                end
+            end
+        end
+    end
+    return mapById, mapByName
+end
+
+-- ==== Deteksi "Enchant Stone" di inventory ====
+-- Kita cari item di kategori "Items" (typed) yang datanya mengindikasikan EnchantStone
+local function safeItemData(id)
+    local ok, ItemUtility = pcall(function() return require(ReplicatedStorage.Shared.ItemUtility) end)
+    if not ok or not ItemUtility then return nil end
+
+    local d = nil
+    -- coba resolusi paling akurat dulu
+    if ItemUtility.GetItemDataFromItemType then
+        local ok2, got = pcall(function() return ItemUtility:GetItemDataFromItemType("Items", id) end)
+        if ok2 and got then d = got end
+    end
+    if not d and ItemUtility.GetItemData then
+        local ok3, got = pcall(function() return ItemUtility:GetItemData(id) end)
+        if ok3 and got then d = got end
+    end
+    return d and d.Data
+end
+
+local function isEnchantStoneEntry(entry)
+    if type(entry) ~= "table" then return false end
+    local id    = entry.Id or entry.id
+    local name  = nil
+    local dtype = nil
+
+    local data = safeItemData(id)
+    if data then
+        dtype = tostring(data.Type or data.Category or "")
+        name  = tostring(data.Name or "")
+    end
+
+    -- heuristik aman:
+    -- - type "EnchantStones" / "Enchant Stone(s)"
+    -- - atau namanya mengandung "Enchant Stone"
+    if dtype and dtype:lower():find("enchant") and dtype:lower():find("stone") then
+        return true
+    end
+    if name and name:lower():find("enchant") and name:lower():find("stone") then
+        return true
+    end
+
+    -- fallback: cek tag khusus pada entry (kalau server isi)
+    if entry.Metadata and entry.Metadata.IsEnchantStone then
+        return true
+    end
+
     return false
 end
 
-local function findUnderNet(name)
-    local Packages = RS:FindFirstChild("Packages")
-    local _Index   = Packages and Packages:FindFirstChild("_Index")
-    if not _Index then return end
-    for _,pkg in ipairs(_Index:GetChildren()) do
-        if pkg:IsA("Folder") and pkg.Name:match("^sleitnick_net@") then
-            local net = pkg:FindFirstChild("net")
-            if net then
-                local inst = net:FindFirstChild(name)
-                if inst then return inst end
-            end
+-- ==== Feature Class ====
+local Auto = {}
+Auto.__index = Auto
+
+function Auto.new(opts)
+    opts = opts or {}
+
+    -- InventoryWatcher
+    local watcher = opts.watcher
+    if not watcher and opts.attemptAutoWatcher then
+        -- coba ambil dari global / require loader kamu
+        local ok, Mod = pcall(function()
+            -- sesuaikan path kalau kamu punya file lokalnya
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
+        end)
+        if ok and Mod then
+            local w = Mod.new()
+            watcher = w
+        end
+    end
+
+    local self = setmetatable({
+        _watcher     = watcher,       -- disarankan inject watcher kamu
+        _enabled     = false,
+        _running     = false,
+        _slot        = tonumber(opts.hotbarSlot or 3), -- default 3 (2..5 biasanya aman)
+        _delay       = tonumber(opts.rollDelay or 0.35),
+        _timeout     = tonumber(opts.rollResultTimeout or 6.0),
+        _targetsById = {},            -- set[int] = true
+        _targetsByName = {},          -- set[name] = true (display)
+        _mapId2Name  = {},
+        _mapName2Id  = {},
+        _evRoll      = Instance.new("BindableEvent"), -- signal untuk hasil roll (Id)
+        _conRoll     = nil,
+    }, Auto)
+
+    -- Enchant index
+    self._mapId2Name, self._mapName2Id = buildEnchantsIndex()
+
+    -- listen inbound RE/RollEnchant
+    self:_attachRollListener()
+
+    return self
+end
+
+-- ---- Public API ----
+
+function Auto:setTargetsByNames(namesTbl)
+    self._targetsById = {}
+    self._targetsByName = {}
+    for _, name in ipairs(namesTbl or {}) do
+        local id = self._mapName2Id[name]
+        if id then
+            self._targetsById[id] = true
+            self._targetsByName[name] = true
+        else
+            warn("[autoenchantrod] unknown enchant name:", name)
         end
     end
 end
 
-local function findRemote(name)
-    return findUnderNet(name) or RS:FindFirstChild(name, true)
+function Auto:setTargetsByIds(idsTbl)
+    self._targetsById = {}
+    self._targetsByName = {}
+    for _, id in ipairs(idsTbl or {}) do
+        id = tonumber(id)
+        if id then
+            self._targetsById[id] = true
+            local nm = self._mapId2Name[id]
+            if nm then self._targetsByName[nm] = true end
+        end
+    end
 end
 
-local function disconnect(x) if x then x:Disconnect() end end
-
--- ============== API ==============
-function Feature:Init(controls)
-    buildEnchantIndex()
-
-    -- find remotes
-    RollEvent               = findRemote("RE/RollEnchant")
-    ActivateEnchantingAltar = findRemote("RE/ActivateEnchantingAltar")
-    EquipItem               = findRemote("RE/EquipItem")
-
-    -- listen enchant index refresh (jaga2 ada update)
-    RS.DescendantAdded:Connect(function(d)
-        if EnchantsFolder and d.Parent == EnchantsFolder and d:IsA("ModuleScript") then
-            local meta = safeRequire(d)
-            if meta then
-                IndexById[meta.Id] = meta
-                IndexByName[norm(meta.Name)] = meta
-            end
-        end
-    end)
-
-    -- auto-capture StoneUUID saat user equip manual
-    -- (RE/EquipItem:FireServer(<uuid>, "EnchantStones"))
-    local rawmt = getrawmetatable(game); local old = rawmt.__namecall
-    setreadonly(rawmt, false)
-    rawmt.__namecall = newcclosure(function(self, ...)
-        local m = getnamecallmethod()
-        if typeof(self)=="Instance" and self.Name=="RE/EquipItem" and m=="FireServer" then
-            local args = table.pack(...)
-            if type(args[1])=="string" and args[2]=="EnchantStones" then
-                StoneUUID = args[1]
-                print("[autoenchantrod] captured Stone UUID:", StoneUUID)
-            end
-        end
-        return old(self, ...)
-    end)
-    setreadonly(rawmt, true)
-
-    -- pre-populate dropdown (optional)
-    if controls and controls.enchantDropdownMulti and controls.enchantDropdownMulti.Reload then
-        local names = {}
-        for _, meta in pairs(IndexById) do table.insert(names, meta.Name) end
-        table.sort(names)
-        controls.enchantDropdownMulti:Reload(names)
+function Auto:setHotbarSlot(n)
+    n = tonumber(n)
+    if n and n >= 2 and n <= 5 then
+        self._slot = n
+    else
+        warn("[autoenchantrod] invalid slot, keep:", self._slot)
     end
+end
 
+function Auto:isEnabled() return self._enabled end
+
+function Auto:start()
+    if self._enabled then return end
+    self._enabled = true
+    task.spawn(function() self:_runLoop() end)
+end
+
+function Auto:stop()
+    self._enabled = false
+end
+
+function Auto:destroy()
+    self._enabled = false
+    if self._conRoll then
+        self._conRoll:Disconnect()
+        self._conRoll = nil
+    end
+    if self._evRoll then
+        self._evRoll:Destroy()
+        self._evRoll = nil
+    end
+end
+
+-- ---- Internals ----
+
+function Auto:_attachRollListener()
+    if self._conRoll then self._conRoll:Disconnect() end
+    local re = getRemote(REMOTE_NAMES.RollEnchant)
+    if not re or not re:IsA("RemoteEvent") then
+        warn("[autoenchantrod] RollEnchant remote not found (will retry when run)")
+        return
+    end
+    self._conRoll = re.OnClientEvent:Connect(function(...)
+        -- Arg #2 = Id enchant (sesuai file listener kamu)
+        local args = table.pack(...)
+        local id = tonumber(args[2]) -- hati-hati: beberapa game pakai #1, disesuaikan kalau perlu
+        if id then
+            self._evRoll:Fire(id)
+        end
+    end)
+end
+
+function Auto:_waitRollId(timeoutSec)
+    timeoutSec = timeoutSec or self._timeout
+    local gotId = nil
+    local done = false
+    local conn
+    conn = self._evRoll.Event:Connect(function(id)
+        gotId = id
+        done = true
+        if conn then conn:Disconnect() end
+    end)
+    local t0 = os.clock()
+    while not done do
+        task.wait(0.05)
+        if os.clock() - t0 > timeoutSec then
+            if conn then conn:Disconnect() end
+            break
+        end
+    end
+    return gotId
+end
+
+function Auto:_findOneEnchantStoneUuid()
+    if not self._watcher then return nil end
+    -- pakai typed snapshot agar robust (Items typed)
+    local items = nil
+    if self._watcher.getSnapshotTyped then
+        items = self._watcher:getSnapshotTyped("Items")
+    else
+        items = self._watcher:getSnapshot("Items")
+    end
+    for _, entry in ipairs(items or {}) do
+        if isEnchantStoneEntry(entry) then
+            local uuid = entry.UUID or entry.Uuid or entry.uuid
+            if uuid then return uuid end
+        end
+    end
+    return nil
+end
+
+function Auto:_equipStoneToHotbar(uuid)
+    local reEquipItem = getRemote(REMOTE_NAMES.EquipItem)
+    if not reEquipItem then
+        warn("[autoenchantrod] EquipItem remote not found"); return false
+    end
+    local ok = pcall(function()
+        reEquipItem:FireServer(uuid, "EnchantStones")
+    end)
+    if not ok then
+        warn("[autoenchantrod] EquipItem FireServer failed"); return false
+    end
+    task.wait(0.15)
     return true
 end
 
-function Feature:SetDesiredByNames(listOrSet)
-    wantedNames, wantedIds = {}, {}
-    if type(listOrSet)=="table" then
-        if #listOrSet > 0 then
-            for _,nm in ipairs(listOrSet) do wantedNames[norm(nm)] = true end
-        else
-            for k,v in pairs(listOrSet) do if v then wantedNames[norm(k)] = true end end
+function Auto:_equipFromHotbar(slot)
+    local reEquipHotbar = getRemote(REMOTE_NAMES.EquipToolFromHotbar)
+    if not reEquipHotbar then
+        warn("[autoenchantrod] EquipToolFromHotbar remote not found"); return false
+    end
+    local ok = pcall(function()
+        reEquipHotbar:FireServer(slot)
+    end)
+    if not ok then
+        warn("[autoenchantrod] EquipToolFromHotbar failed"); return false
+    end
+    task.wait(0.1)
+    return true
+end
+
+function Auto:_activateAltar()
+    local reActivate = getRemote(REMOTE_NAMES.ActivateEnchantingAltar)
+    if not reActivate then
+        warn("[autoenchantrod] ActivateEnchantingAltar remote not found"); return false
+    end
+    local ok = pcall(function()
+        reActivate:FireServer()
+    end)
+    if not ok then
+        warn("[autoenchantrod] ActivateEnchantingAltar failed"); return false
+    end
+    return true
+end
+
+function Auto:_logStatus(msg)
+    print(("[autoenchantrod] %s"):format(msg))
+end
+
+function Auto:_runOnce()
+    -- 1) ambil satu Enchant Stone
+    local uuid = self._findOneEnchantStoneUuid and self:_findOneEnchantStoneUuid() or nil
+    if not uuid then
+        self:_logStatus("no Enchant Stone found in inventory.")
+        return false, "no_stone"
+    end
+
+    -- 2) taro ke hotbar (equip item)
+    if not self:_equipStoneToHotbar(uuid) then
+        return false, "equip_item_failed"
+    end
+
+    -- 3) pilih dari hotbar
+    if not self:_equipFromHotbar(self._slot) then
+        return false, "equip_hotbar_failed"
+    end
+
+    -- 4) aktifkan altar
+    if not self:_activateAltar() then
+        return false, "altar_failed"
+    end
+
+    -- 5) tunggu hasil RollEnchant (Id)
+    local id = self:_waitRollId(self._timeout)
+    if not id then
+        self:_logStatus("no roll result (timeout)")
+        return false, "timeout"
+    end
+    local name = self._mapId2Name[id] or ("Id "..tostring(id))
+    self:_logStatus(("rolled: %s (Id=%d)"):format(name, id))
+
+    -- 6) cocokkan target
+    if self._targetsById[id] then
+        self:_logStatus(("MATCH target: %s — stopping."):format(name))
+        return true, "matched"
+    end
+    return false, "not_matched"
+end
+
+function Auto:_runLoop()
+    if self._running then return end
+    self._running = true
+
+    -- pastikan listener terpasang
+    self:_attachRollListener()
+
+    while self._enabled do
+        -- safety: cek target
+        local hasTarget = false
+        for _ in pairs(self._targetsById) do hasTarget = true break end
+        if not hasTarget then
+            self:_logStatus("no targets set — idle. Call setTargetsByNames/Ids first.")
+            break
         end
-    end
-    for n,_ in pairs(wantedNames) do
-        local m = IndexByName[n]; if m then wantedIds[m.Id] = true end
-    end
-end
 
-function Feature:SetDesiredByIds(listOrSet)
-    wantedIds, wantedNames = {}, {}
-    if type(listOrSet)=="table" then
-        if #listOrSet > 0 then
-            for _,id in ipairs(listOrSet) do id=tonumber(id); if id then wantedIds[id]=true end end
-        else
-            for k,v in pairs(listOrSet) do if v then k=tonumber(k); if k then wantedIds[k]=true end end end
-        end
-    end
-end
-
-function Feature:SetDelay(sec)
-    sec = tonumber(sec); if sec and sec>=0.2 then DELAY_BETWEEN_ROLLS = sec; return true end
-    return false
-end
-
--- Optional manual setter kalau mau paste UUID langsung
-function Feature:SetStoneUUID(uuid)
-    if type(uuid)=="string" and #uuid>=8 then StoneUUID = uuid; return true end
-    return false
-end
-
--- ============== Core ==============
-local function attachResultListener(self)
-    disconnect(resultConn)
-    if not RollEvent or not RollEvent:IsA("RemoteEvent") then return end
-    resultConn = RollEvent.OnClientEvent:Connect(function(a1, a2)
-        lastResultAt = tick()
-        local id = tonumber(a2)
-        if id then
-            -- debug kecil
-            -- print("[autoenchantrod] result id:", id, IndexById[id] and IndexById[id].Name)
-            if matches(id) and not foundOnce then
-                foundOnce = true
-                print("[autoenchantrod] MATCH FOUND:", id, IndexById[id] and IndexById[id].Name or "?")
-                self:Stop()
+        -- safety: cek watcher ready
+        if self._watcher and self._watcher.onReady then
+            -- tunggu sekali saja di awal
+            local ready = true
+            if not self._watcher._ready then
+                ready = false
+                local done = false
+                local conn = self._watcher:onReady(function() done = true end)
+                local t0 = os.clock()
+                while not done and self._enabled do
+                    task.wait(0.05)
+                    if os.clock()-t0 > 5 then break end
+                end
+                if conn and conn.Disconnect then conn:Disconnect() end
+                ready = done
+            end
+            if not ready then
+                self:_logStatus("watcher not ready — abort")
+                break
             end
         end
-    end)
-end
 
-function Feature:Start(cfg)
-    if running then return end
-    running   = true
-    foundOnce = false
-    if cfg then
-        if cfg.enchantNames then self:SetDesiredByNames(cfg.enchantNames) end
-        if cfg.enchantIds   then self:SetDesiredByIds(cfg.enchantIds)   end
-        if cfg.delay        then self:SetDelay(cfg.delay)                end
-        if type(cfg.stoneUUID)=="string" then self:SetStoneUUID(cfg.stoneUUID) end
+        local ok, reason = self:_runOnce()
+        if ok then
+            -- ketemu target => stop otomatis
+            self._enabled = false
+            break
+        else
+            if reason == "no_stone" then
+                self:_logStatus("stop: habis Enchant Stone.")
+                self._enabled = false
+                break
+            end
+            -- retry kecil
+            task.wait(self._delay)
+        end
     end
 
-    -- ensure remotes
-    RollEvent               = RollEvent               or findRemote("RE/RollEnchant")
-    ActivateEnchantingAltar = ActivateEnchantingAltar or findRemote("RE/ActivateEnchantingAltar")
-    EquipItem               = EquipItem               or findRemote("RE/EquipItem")
-
-    attachResultListener(self)
-
-    -- watch jika remote muncul telat
-    disconnect(watchConn)
-    watchConn = RS.DescendantAdded:Connect(function(d)
-        if d.Name=="RE/RollEnchant" and d:IsA("RemoteEvent") then
-            RollEvent = d; attachResultListener(self)
-        elseif d.Name=="RE/ActivateEnchantingAltar" and d:IsA("RemoteEvent") then
-            ActivateEnchantingAltar = d
-        elseif d.Name=="RE/EquipItem" and d:IsA("RemoteEvent") then
-            EquipItem = d
-        end
-    end)
-
-    disconnect(hbConn)
-    hbConn = RunService.Heartbeat:Connect(function()
-        if not running or foundOnce then return end
-        -- Harus punya UUID & remotes
-        if not (EquipItem and ActivateEnchantingAltar and StoneUUID) then
-            return
-        end
-
-        -- Timeout: kalau belum ada hasil cukup lama, ulang siklus
-        if (tick() - lastResultAt) < DELAY_BETWEEN_ROLLS then return end
-        lastResultAt = tick()  -- set lebih awal untuk throttling
-
-        -- 1) Equip Enchant Stone
-        pcall(function() EquipItem:FireServer(StoneUUID, "EnchantStones") end)
-
-        -- 2) Activate Altar
-        pcall(function() ActivateEnchantingAltar:FireServer() end)
-
-        -- (Server akan memicu RE/RollEnchant → listener di atas yang memutuskan stop)
-        -- Jika tidak ada hasil dalam RESULT_TIMEOUT, loop akan memukul lagi
-        task.delay(RESULT_TIMEOUT, function()
-            if running and (tick() - lastResultAt) >= RESULT_TIMEOUT then
-                -- no-op; Heartbeat berikutnya akan trigger siklus lagi
-            end
-        end)
-    end)
+    self._running = false
 end
 
-function Feature:Stop()
-    if not running then return end
-    running = false
-    disconnect(hbConn)      ; hbConn = nil
-    disconnect(resultConn)  ; resultConn = nil
-    disconnect(watchConn)   ; watchConn = nil
-end
+-- ==== Module export ====
+local autoenchantrodFeature = {
+    new = Auto.new,
+}
 
-function Feature:Cleanup()
-    self:Stop()
-    wantedIds, wantedNames = {}, {}
-    StoneUUID = nil
-end
+return autoenchantrodFeature
 
--- Convenience untuk GUI agar bisa mengambil list nama enchant
-function Feature:GetEnchantNames()
-    local names = {}
-    for _, m in pairs(IndexById) do table.insert(names, m.Name) end
-    table.sort(names)
-    return names
-end
-
-return Feature
