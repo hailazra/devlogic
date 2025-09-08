@@ -218,3 +218,29 @@ function InventoryWatcher:destroy()
 end
 
 return InventoryWatcher
+
+
+--[[ cara pakai :
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local InventoryWatcher = loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
+local inv = InventoryWatcher.new()
+
+inv:onReady(function()
+    local total,max,free = inv:getTotals()
+    local byType = inv:getCountsByType()
+    print(("[INV] %d/%d (free %d) | Fishes=%d, Items=%d, Potions=%d, Baits=%d, Rods=%d")
+        :format(total,max,free, byType.Fishes,byType.Items,byType.Potions,byType.Baits,byType["Fishing Rods"]))
+    print("Equipped bait:", inv:getEquippedBaitId(), "AutoSellThreshold:", inv:getAutoSellThreshold())
+end)
+
+inv:onChanged(function(total,max,free,byType)
+    -- contoh trigger: aktifkan autosell kalau slot tinggal <= 3
+    if free <= 3 then
+        -- autosellFeature:RunOnce()
+    end
+end)
+
+inv:onEquipChanged(function(equippedSet, baitId)
+    -- contoh: pastikan rod tertentu ter-equip sebelum mulai mancing
+    -- if not equippedSet[targetUUID] then EquipItem:FireServer(targetUUID, "Fishing Rods") end
+end)]]
