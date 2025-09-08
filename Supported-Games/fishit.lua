@@ -628,7 +628,7 @@ local selectedTiers = {}
 -- Dropdown: start dengan tier default, akan di-reload saat feature dimuat
 local favfish_ddm = TabBackpack:Dropdown({
     Title     = "Select Rarity",
-    Values    = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common" }, -- default fallback
+    Values    = { "Secret", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common" }, -- default fallback
     Value     = {},
     Multi     = true,
     AllowNone = true,
@@ -671,7 +671,6 @@ local favfish_tgl = TabBackpack:Toggle({
                     Icon = "info", 
                     Duration = 3 
                 })
-                
                 return
             end
 
@@ -684,7 +683,6 @@ local favfish_tgl = TabBackpack:Toggle({
                     Icon = "x", 
                     Duration = 3 
                 })
-                favfish_tgl:Set(false)
                 return
             end
 
