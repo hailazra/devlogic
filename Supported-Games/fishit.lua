@@ -44,7 +44,8 @@ local FEATURE_URLS = {
     AutoBuyRod         = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyrod.lua",
     AutoTeleportEvent  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportevent.lua",
     AutoGearOxyRadar   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autogearoxyradar.lua",
-    AntiAfk            = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/antiafk.lua"
+    AntiAfk            = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/antiafk.lua",
+    AutoEcnhant        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoenchant.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -1136,6 +1137,81 @@ local shopweather_tgl = TabShop:Toggle({
             end
         else
             if weatherFeature and weatherFeature.Stop then weatherFeature:Stop() end
+        end
+    end
+})
+
+-- === Shop Tab – Auto Buy Enchant ===
+local enchantFeature       = nil
+local selectedEnchantSet   = {}
+local BUYABLE_ENCHANTS     = { "Cursed I", "Gold Digger I", "Leprechaun I" }  -- placeholder; akan di-refresh dari modul
+
+-- Dropdown multi untuk memilih enchant yang ingin dibeli
+local shoppenchant_ddm = TabShop:Dropdown({
+    Title     = "Select Enchant",
+    Desc      = "",
+    Values    = BUYABLE_ENCHANTS,
+    Value     = {},
+    Multi     = true,
+    AllowNone = true,
+    Callback  = function(options)
+        -- bangun ulang set dari pilihan
+        selectedEnchantSet = {}
+        for _, opt in ipairs(options) do
+            if type(opt) == "string" and opt ~= "" then
+                selectedEnchantSet[opt] = true
+            end
+        end
+        -- jika fitur sudah dimuat, update konfigurasi
+        if enchantFeature and enchantFeature.SetEnchants then
+            enchantFeature:SetEnchants(selectedEnchantSet)
+        end
+    end
+})
+
+-- Toggle untuk mengaktifkan/mematikan auto buy enchant
+local shoppenchant_tgl = TabShop:Toggle({
+    Title   = "Auto Buy Enchant",
+    Default = false,
+    Callback = function(state)
+        if state then
+            -- load modul jika belum ada
+            if not enchantFeature then
+                enchantFeature = FeatureManager:LoadFeature("AutoBuyEnchant", {
+                    enchantDropdownMulti = shoppenchant_ddm,
+                    toggle               = shoppenchant_tgl,
+                })
+                -- refresh opsi dropdown dengan data real dari game
+                if enchantFeature and enchantFeature.GetBuyableEnchants then
+                    local names = enchantFeature:GetBuyableEnchants()
+                    if shoppenchant_ddm.Reload then
+                        shoppenchant_ddm:Reload(names)
+                    elseif shoppenchant_ddm.SetOptions then
+                        shoppenchant_ddm:SetOptions(names)
+                    end
+                end
+            end
+            -- pastikan user memilih minimal satu enchant
+            if next(selectedEnchantSet) == nil then
+                WindUI:Notify({ Title="Info", Content="Select at least 1 enchant", Icon="info", Duration=3 })
+                shoppenchant_tgl:Set(false)
+                return
+            end
+            -- jalankan fitur
+            if enchantFeature and enchantFeature.Start then
+                enchantFeature:Start({
+                    enchantList = selectedEnchantSet,
+                    -- Anda dapat menambahkan parameter lain sesuai kebutuhan modul
+                })
+            else
+                shoppenchant_tgl:Set(false)
+                WindUI:Notify({ Title="Failed", Content="Could not start AutoBuyEnchant", Icon="x", Duration=3 })
+            end
+        else
+            -- matikan fitur ketika toggle off
+            if enchantFeature and enchantFeature.Stop then
+                enchantFeature:Stop()
+            end
         end
     end
 })
