@@ -699,7 +699,7 @@ local favfish_tgl = TabBackpack:Toggle({
                 local ok = autoFavFishFeature:Start({
                     tierNames  = selectedTiers,
                     delay      = 0.10,   -- aman dari throttling
-                    maxPerTick = 15      -- <- tidak ada trailing comma
+                    maxPerTick = 15
                 })
                 if ok then
                     WindUI:Notify({
@@ -717,13 +717,15 @@ local favfish_tgl = TabBackpack:Toggle({
                         Duration = 3
                     })
                 end
+            end -- <<< TUTUP if autoFavFishFeature and Start
         else
             if autoFavFishFeature and autoFavFishFeature.Stop then
                 autoFavFishFeature:Stop()
             end
-        end
-    end
+        end -- <<< TUTUP if state
+    end -- <<< TUTUP function(state)
 })
+
 
 
 --- Sell Fish
