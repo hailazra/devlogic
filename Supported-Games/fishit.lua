@@ -643,6 +643,7 @@ local favfish_ddm = TabBackpack:Dropdown({
     end
 })
 
+
 local favfish_tgl = TabBackpack:Toggle({
     Title   = "Auto Favorite Fish",
     Desc    = "Automatically favorite fish with selected rarities",
@@ -659,6 +660,9 @@ local favfish_tgl = TabBackpack:Toggle({
                     toggle   = favfish_tgl,
                     watcher  = _G.invWatcher or _G.InventoryWatcherInstance -- inject watcher jika ada
                 })
+                
+                
+                    end
                 end
             end
 
