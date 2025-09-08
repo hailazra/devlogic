@@ -686,7 +686,7 @@ local favfish_tgl = TabBackpack:Toggle({
     Desc    = "Automatically favorite fish with selected rarities",
     Default = false,
     Callback = function(state)
-        if state then
+       if state then
     -- [PATCH] pastikan watcher ada
     local watcher = _G.invWatcher or _G.InventoryWatcherInstance or ensureInventoryWatcher()
 
