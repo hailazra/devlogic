@@ -693,7 +693,7 @@ local sellfish_tgl = TabBackpack:Toggle({
 --- === AUTOMATION === ---
 --- Auto Enchant Rod
 local autoenchantrod_sec = TabAutomation:Section({ 
-    Title = "Auto Gift",
+    Title = "Auto Enchant",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
@@ -704,7 +704,7 @@ local selectedEnchants   = {}
 -- Dropdown multi
 local enchant_ddm = TabAutomation:Dropdown({
     Title     = "Select Enchants",
-    Values    = {},       -- akan diisi saat modul diload
+    Values    = { "Cursed I", "Leprechaun II", "Gold Digger I", "Mutation Hunter I" },       -- akan diisi saat modul diload
     Value     = {},
     Multi     = true,
     AllowNone = true,
