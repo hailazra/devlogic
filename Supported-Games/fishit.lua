@@ -1285,8 +1285,7 @@ local function getWeatherNames()
                 return require(weather)
             end)
             
-            if success and moduleData then
-                -- Check apakah WeatherMachine = true dan ada WeatherMachinePrice
+            if success and moduleData then 
                 if moduleData.WeatherMachine == true and moduleData.WeatherMachinePrice then
                     table.insert(weatherName, weather.Name)
                 end
