@@ -7,7 +7,7 @@ local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 -- Dependencies
-local InventoryWatcher = loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
+local InventoryWatcher = require(script.Parent["inventdetectfishit"])
 
 -- State
 local running = false
@@ -24,6 +24,8 @@ local fishDataCache = {} -- { [fishId] = fishData }
 local tierDataCache = {} -- { [tierNumber] = tierInfo }
 local lastFavoriteTime = 0
 local favoriteQueue = {} -- queue of fish UUIDs to favorite
+local pendingFavorites = {}  -- [uuid] = lastActionTick (cooldown
+local FAVORITE_COOLDOWN = 2.0
 
 -- Remotes
 local favoriteRemote = nil
@@ -137,18 +139,40 @@ local function favoriteFish(uuid)
     return success
 end
 
+local function getUUID(entry)
+    return entry.UUID or entry.Uuid or entry.uuid
+end
+
+local function getFishId(entry)
+    return entry.Id or entry.id
+end
+
+local function isFavorited(entry)
+    -- cover common placements / casings
+    if entry.Favorited ~= nil then return entry.Favorited end
+    if entry.favorited ~= nil then return entry.favorited end
+    if entry.Metadata and entry.Metadata.Favorited ~= nil then return entry.Metadata.Favorited end
+    if entry.Metadata and entry.Metadata.favorited ~= nil then return entry.Metadata.favorited end
+    return false
+end
+
+local function cooldownActive(uuid, now)
+    local t = pendingFavorites[uuid]
+    return t and (now - t) < FAVORITE_COOLDOWN
+end
 local function processInventory()
     if not inventoryWatcher then return end
-    
-    -- Get typed fishes from inventory
+
     local fishes = inventoryWatcher:getSnapshotTyped("Fishes")
     if not fishes or #fishes == 0 then return end
-    
-    -- Find fishes that should be favorited
+
+    local now = tick()
+
     for _, fishEntry in ipairs(fishes) do
-        if shouldFavoriteFish(fishEntry) then
-            local uuid = fishEntry.UUID or fishEntry.Uuid or fishEntry.uuid
-            if uuid and not table.find(favoriteQueue, uuid) then
+        -- Only favorite if tier matches AND it's not already favorited
+        if shouldFavoriteFish(fishEntry) and not isFavorited(fishEntry) then
+            local uuid = getUUID(fishEntry)
+            if uuid and not cooldownActive(uuid, now) and not table.find(favoriteQueue, uuid) then
                 table.insert(favoriteQueue, uuid)
             end
         end
@@ -157,16 +181,20 @@ end
 
 local function processFavoriteQueue()
     if #favoriteQueue == 0 then return end
-    
+
     local currentTime = tick()
     if currentTime - lastFavoriteTime < FAVORITE_DELAY then return end
-    
+
     local uuid = table.remove(favoriteQueue, 1)
     if uuid then
-        favoriteFish(uuid)
+        if favoriteFish(uuid) then
+            -- mark cooldown so we don't immediately toggle it back
+            pendingFavorites[uuid] = currentTime
+        end
         lastFavoriteTime = currentTime
     end
 end
+
 
 local function mainLoop()
     if not running then return end
