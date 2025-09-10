@@ -1096,21 +1096,35 @@ local shopbait_sec = TabShop:Section({
     TextSize = 17, -- Default Size
 })
 
+local function getBaitNames()
+    local baitNames = {}
+    
+    for _, bait in pairs(BaitFolder:GetChildren()) do
+        if item:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(item)
+            end)
+            
+            if success and moduleData then
+                if moduleData.Data and moduleData.Data.Type == "Baits" then
+                    if moduleData.Price then
+                        table.insert(baitNames, bait.Name)
+                    end
+                end
+            end
+        end
+    end
+    
+    return baitNames
+end
+
 local autobuybaitFeature = nil
-local selectedBaitsSet = {} -- State untuk menyimpan pilihan user
+local selectedBaitsSet = {}
+local baitNames = getBaitNames()
 
 local shopbait_ddm = TabShop:Dropdown({
     Title = "Select Bait",
-    Values = {
-        "Topwater Bait",
-        "Luck Bait",
-        "Midnight Bait", 
-        "Nature Bait",
-        "Chroma Bait",
-        "Dark Matter Bait",
-        "Corrupt Bait",
-        "Aether Bait"
-    },
+    Values = baitNames,
     Value = {}, -- Start with empty selection
     Multi = true,
     AllowNone = true,
