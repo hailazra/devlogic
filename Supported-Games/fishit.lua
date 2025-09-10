@@ -1100,7 +1100,7 @@ local function getBaitNames()
     local baitNames = {}
     
     for _, bait in pairs(BaitFolder:GetChildren()) do
-        if item:IsA("ModuleScript") then
+        if bait:IsA("ModuleScript") then
             local success, moduleData = pcall(function()
                 return require(item)
             end)
