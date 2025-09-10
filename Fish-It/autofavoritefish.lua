@@ -7,7 +7,7 @@ local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 -- Dependencies
-local InventoryWatcher = loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
+local InventoryWatcher = require(script.Parent["inventdetectfishit"])
 
 -- State
 local running = false
@@ -348,18 +348,42 @@ function AutoFavoriteFish:GetSelectedTiers()
     return selected
 end
 
-function AutoFavoriteFish:GetFavoritedCount()
-    local count = 0
-    for _ in pairs(favoritedFish) do
-        count = count + 1
-    end
-    return count
+function AutoFavoriteFish:GetQueueSize()
+    return #favoriteQueue
 end
 
-function AutoFavoriteFish:ClearFavoritedTracking()
-    table.clear(favoritedFish)
-    print("[AutoFavoriteFish] Cleared favorited fish tracking")
-    return true
+-- Debug helper untuk lihat status favorit
+function AutoFavoriteFish:DebugFishStatus(limit)
+    if not inventoryWatcher then return end
+    
+    local fishes = inventoryWatcher:getSnapshotTyped("Fishes")
+    if not fishes or #fishes == 0 then return end
+    
+    print("=== DEBUG FISH STATUS ===")
+    for i, fishEntry in ipairs(fishes) do
+        if limit and i > limit then break end
+        
+        local fishId = fishEntry.Id or fishEntry.id
+        local uuid = fishEntry.UUID or fishEntry.Uuid or fishEntry.uuid
+        local fishData = fishDataCache[fishId]
+        local fishName = fishData and fishData.Name or "Unknown"
+        
+        -- Check various favorited field locations
+        local favorited1 = fishEntry.Favorited
+        local favorited2 = fishEntry.favorited  
+        local favorited3 = fishEntry.Metadata and fishEntry.Metadata.Favorited
+        local favorited4 = fishEntry.Metadata and fishEntry.Metadata.favorited
+        
+        print(string.format("%d. %s (%s)", i, fishName, uuid or "no-uuid"))
+        print("   Favorited fields:", favorited1, favorited2, favorited3, favorited4)
+        
+        if fishData then
+            local tierInfo = tierDataCache[fishData.Tier]
+            local tierName = tierInfo and tierInfo.Name or "Unknown"
+            print("   Tier:", tierName, "- Should favorite:", shouldFavoriteFish(fishEntry))
+        end
+        print("")
+    end
 end
 
 return AutoFavoriteFish
