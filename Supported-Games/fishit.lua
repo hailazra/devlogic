@@ -1276,24 +1276,36 @@ local shopweather_sec = TabShop:Section({
     TextSize = 17, -- Default Size
 })
 
-local weatherFeature          = nil
-local selectedWeatherSet      = {}  -- pakai set seperti pola webhook
-
-local BUYABLE_WEATHER = {
-    "Shark Hunt", "Wind", "Snow", "Radiant", "Storm", "Cloudy" 
-}
-
-local BUYABLE_WEATHER_OPTIONS = {}
-for _, weather in ipairs(BUYABLE_WEATHER) do
-    table.insert(BUYABLE_WEATHER_OPTIONS, weather)
+local function getWeatherNames()
+    local weatherName = {}
+    
+    for _, weather in pairs(WeatherFolder:GetChildren()) do
+        if weather:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(weather)
+            end)
+            
+            if success and moduleData then
+                -- Check apakah WeatherMachine = true dan ada WeatherMachinePrice
+                if moduleData.WeatherMachine == true and moduleData.WeatherMachinePrice then
+                    table.insert(weatherName, weather.Name)
+                end
+            end
+        end
+    end
+    
+    return weatherName
 end
 
-
+local weatherFeature          = nil
+local selectedWeatherSet      = {} 
+local weatherName = getWeatherNames()
+
 -- Multi dropdown (Values diisi setelah modul diload)
 local shopweather_ddm = TabShop:Dropdown({
     Title     = "Select Weather",
     Desc      = "",
-    Values    = BUYABLE_WEATHER_OPTIONS,
+    Values    = weatherNames,
     Value     = {},
     Multi     = true,
     AllowNone = true,
