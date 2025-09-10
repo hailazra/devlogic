@@ -802,7 +802,7 @@ local function getEnchantName()
     local enchantName = {}
     for _, enchant in pairs(EnchantFolder:GetChildren()) do
         if enchant:IsA("ModuleScript") then
-            table.insert(enchantsList, enchant.Name)
+            table.insert(enchantName, enchant.Name)
         end
     end
     return enchantName
