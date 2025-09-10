@@ -11,6 +11,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
+local EnchantFolder = ReplicatedStorage.Enchants
+local BaitFolder = ReplicatedStorage.Baits
+local RodFolder = ReplicatedStorage.Items
+local WeatherFolder = ReplicatedStorage.Events
+local EventFolder = ReplicatedStorage.Events
+local BoatFolder = ReplicatedStorage.Boats
 
 -- Make global for features to access
 _G.GameServices = {
@@ -792,13 +798,23 @@ local autoenchantrod_sec = TabAutomation:Section({
     TextSize = 17, -- Default Size
 })
 
+local function getEnchantName()
+    local enchantName = {}
+    for _, enchant in pairs(EnchantFolder:GetChildren()) do
+        if enchant:IsA("ModuleScript") then
+            table.insert(enchantsList, enchant.Name)
+        end
+    end
+    return enchantName
+end
+
 local autoEnchantFeature = nil
 local selectedEnchants   = {}
+local enchantName = getEnchantName()
 
--- Dropdown multi untuk memilih enchant yang diincar
 local enchant_ddm = TabAutomation:Dropdown({
     Title     = "Select Enchants",
-    Values    = {"Cursed I", "Leprechaun II", "Gold Digger" },       -- akan diisi saat modul diload
+    Values    = enchantName,       -- akan diisi saat modul diload
     Value     = {},
     Multi     = true,
     AllowNone = true,
@@ -812,7 +828,6 @@ local enchant_ddm = TabAutomation:Dropdown({
     end
 })
 
--- Toggle untuk menghidupkan/mematikan auto enchant
 local enchant_tgl = TabAutomation:Toggle({
     Title   = "Auto Enchant Rod",
     Default = false,
