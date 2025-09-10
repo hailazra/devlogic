@@ -348,8 +348,18 @@ function AutoFavoriteFish:GetSelectedTiers()
     return selected
 end
 
-function AutoFavoriteFish:GetQueueSize()
-    return #favoriteQueue
+function AutoFavoriteFish:GetFavoritedCount()
+    local count = 0
+    for _ in pairs(favoritedFish) do
+        count = count + 1
+    end
+    return count
+end
+
+function AutoFavoriteFish:ClearFavoritedTracking()
+    table.clear(favoritedFish)
+    print("[AutoFavoriteFish] Cleared favorited fish tracking")
+    return true
 end
 
 return AutoFavoriteFish
