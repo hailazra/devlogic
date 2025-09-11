@@ -120,10 +120,22 @@ local Window = WindUI:CreateWindow({
 WindUI:SetFont("rbxasset://12187373592")
 
 -- CUSTOM ICON INTEGRATION - Disable default open button
-Window:EditOpenButton({ Enabled = false })
+Window:EditOpenButton({
+    Title = "",
+    Icon = "rbxassetid://73063950477508",
+    CornerRadius = UDim.new(0,1),
+    StrokeThickness = 1,
+    Color = ColorSequence.new( -- gradient
+        Color3.fromHex("000000"), 
+        Color3.fromHex("000000")
+    ),
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+})
 
 -- Services for custom icon
-local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+---[[local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -379,7 +391,7 @@ if Window.Open then
         end
         return result
     end
-end
+end]]---
 
 -- END CUSTOM ICON INTEGRATION
 
