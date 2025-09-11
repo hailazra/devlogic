@@ -643,11 +643,11 @@ local function label(icon, text) return string.format("%s %s", icon or "", text 
         color = info.shiny and 0xFFD700 or 0x87CEEB, -- Gold for shiny, light blue for normal
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
         footer = { text = ".devlogic | Fish-It Notifier" },fields = {
-    { name = label("fish", "Fish Name"),   value = box(fishName),                              inline = false },
-    { name = label("weight", "Weight"),    value = box(toKg(info.weight)),                     inline = true  },
-    { name = label("chance", "Chance"),    value = box(fmtChanceOneInFromNumber(info.chance)), inline = true  },
-    { name = label("rarity", "Rarity"),    value = box(getTierName(info.tier)),                inline = true  },
-    { name = label("mutation", "Mutation"),value = box(formatVariant(info)),                   inline = false },
+            { name = label(EMOJI.fish, "Fish Name"),  value = box("Wispwing (TEST)"),                   inline = false },
+            { name = label(EMOJI.weight, "Weight"),   value = box("1.27 kg"),                           inline = true  },
+            { name = label(EMOJI.chance, "Chance"),   value = box("1 in 2,000"),                        inline = true  },
+            { name = label(EMOJI.rarity, "Rarity"),   value = box("Legendary"),                         inline = true  },
+            { name = label(EMOJI.mutation, "Mutation"), value = box("Variant: Galaxy | ✨ SHINY"),      inline = false },
         }
     }
 
