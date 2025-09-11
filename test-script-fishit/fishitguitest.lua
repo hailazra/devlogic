@@ -198,8 +198,8 @@ function IconController.new(Window, opts)
         image = (opts and opts.image) or "rbxassetid://73063950477508",
         size = (opts and opts.size) or Vector2.new(44, 44),
         startPos = (opts and opts.startPos) or UDim2.new(0, 10, 0.5, -22),
-        clickThreshold = 4, -- distance
-        clickTimeLimit = 0.1, -- time click
+        clickThreshold = 12, -- distance
+        clickTimeLimit = 0.4, -- time click
         snapDistance = 15,
         
         -- Animation configs
@@ -341,7 +341,7 @@ function IconController:EndDrag()
     
     -- Determine if this was a click or drag
     local totalTime = tick() - State.startTime
-    local isClick = (State.totalDistance <= Config.clickThreshold) and (totalTime <= Config.clickTimeLimit)
+    local isClick = (State.totalDistance < (Config.clickThreshold * 0.5)) and (totalTime <= Config.clickTimeLimit)
     
     if isClick then
         -- Handle click - restore window
@@ -1923,6 +1923,7 @@ if type(Window.OnDestroy) == "function" then
         end
     end)
 end
+
 
 
 
