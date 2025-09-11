@@ -198,8 +198,8 @@ function IconController.new(Window, opts)
         image = (opts and opts.image) or "rbxassetid://73063950477508",
         size = (opts and opts.size) or Vector2.new(44, 44),
         startPos = (opts and opts.startPos) or UDim2.new(0, 10, 0.5, -22),
-        clickThreshold = 12, -- distance
-        clickTimeLimit = 0.4, -- time click
+        clickThreshold = 5, -- distance
+        clickTimeLimit = 0.2, -- time click
         snapDistance = 15,
         
         -- Animation configs
@@ -1923,6 +1923,7 @@ if type(Window.OnDestroy) == "function" then
         end
     end)
 end
+
 
 
 
