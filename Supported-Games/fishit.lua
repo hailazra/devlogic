@@ -135,7 +135,7 @@ Window:EditOpenButton({
 })
 
 -- Services for custom icon
----[[local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+--[[local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -1311,7 +1311,8 @@ end
 local weatherFeature          = nil
 local selectedWeatherSet      = {} 
 local weatherName = getWeatherNames()
-
+
+
 -- Multi dropdown (Values diisi setelah modul diload)
 local shopweather_ddm = TabShop:Dropdown({
     Title     = "Select Weather",
@@ -1788,6 +1789,7 @@ if type(Window.OnDestroy) == "function" then
         end
     end)
 end
+
 
 
 
