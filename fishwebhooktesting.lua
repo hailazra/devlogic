@@ -20,7 +20,7 @@ local EMOJI = {
     weight   = "<:emoji_2:1415617300098449419>",
     chance   = "<:emoji_3:1415617326316916787>",
     rarity   = "<:emoji_4:1415617353898790993>",
-    mutation = "<:emoji_5:1415617377424511027>",
+    mutation = "<:emoji_5:1415617377424511027>"
 }
 
 local function label(icon, text) return string.format("%s %s", icon or "", text or "") end
