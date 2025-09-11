@@ -117,7 +117,8 @@ local Window = WindUI:CreateWindow({
     HideSearchBar = true,
 })
 
-WindUI:SetFont("rbxasset://12187373592")-- =========================
+WindUI:SetFont("rbxasset://12187373592")
+-- =========================
 -- IMPROVED ICON CONTROLLER (Cobalt-inspired)
 -- =========================
 local TweenService = game:GetService("TweenService")
@@ -505,6 +506,19 @@ local DevLogicIcon = IconController.new(Window, {
     size = Vector2.new(44, 44),
     startPos = UDim2.new(0, 10, 0.5, -22),
 })
+
+-- Store cleanup function globally for the old system
+_G.DevLogicIconCleanup = function()
+    if DevLogicIcon then
+        print("[IconController] Cleaning up via global cleanup")
+        DevLogicIcon:Destroy()
+        DevLogicIcon = nil
+    end
+end
+
+-- Optional: Start minimized
+-- DevLogicIcon:MinimizeToIcon()
+
 -- =========================
 -- END CUSTOM ICON INTEGRATION v2
 -- =========================
@@ -1896,13 +1910,20 @@ if type(Window.OnDestroy) == "function" then
         end
         FeatureManager.LoadedFeatures = {}
         
-        -- Cleanup custom icon
+        -- Cleanup custom icon - DIPERBAIKI
         if _G.DevLogicIconCleanup then
             pcall(_G.DevLogicIconCleanup)
             _G.DevLogicIconCleanup = nil
         end
+        
+        -- Cleanup DevLogicIcon secara langsung juga (double safety)
+        if DevLogicIcon then
+            pcall(function() DevLogicIcon:Destroy() end)
+            DevLogicIcon = nil
+        end
     end)
 end
+
 
 
 
