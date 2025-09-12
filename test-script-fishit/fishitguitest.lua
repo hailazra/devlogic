@@ -641,19 +641,20 @@ local TabTeleport        = Window:Tab({ Title = "Teleport",       Icon = "map" }
 local TabMisc            = Window:Tab({ Title = "Misc",           Icon = "cog" })
 
 --- === Home === ---
-local DLsec = TabHome:Section({ 
+local info_sec = TabHome:Section({ 
     Title = "Information",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
-local AboutUs = TabHome:Paragraph({
+local AboutUs = info_sec:Paragraph({
     Title = ".devlogic",
     Desc = "If you found bugs or have suggestion, let us know.",
     Color = "White",
     ImageSize = 30,})
 
-local DiscordBtn = TabHome:Button({
+local DiscordBtn = info_sec:Button({
     Title = "Discord",
     Icon  = "message-circle",
     Callback = function()
@@ -708,12 +709,13 @@ local autofish_sec = TabMain:Section({
     Title = "Fishing",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
 local autoFishFeature = nil
 local currentFishingMode = "Perfect"
 
-local autofishmode_dd = TabMain:Dropdown({
+local autofishmode_dd = autofish_sec:Dropdown({
     Title = "Fishing Mode",
     Values = { "Perfect", "Normal" },
     Value = "Perfect",
@@ -728,7 +730,7 @@ local autofishmode_dd = TabMain:Dropdown({
     end
 })
     
-local autofish_tgl = TabMain:Toggle({
+local autofish_tgl = autofish_sec:Toggle({
     Title = "Auto Fishing",
     Desc = "Automatically fishing with selected mode",
     Default = false,
@@ -767,9 +769,10 @@ local autofish_tgl = TabMain:Toggle({
 
 --- Event Teleport
 local eventtele_sec = TabMain:Section({ 
-    Title = "Event Teleport",
+    Title = "Teleport to Event",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
 local eventteleFeature     = nil
@@ -785,7 +788,7 @@ for _, event in ipairs(AVAIL_EVENT) do
     table.insert(AVAIL_EVENT_OPTIONS, event)
 end
 
-local eventtele_ddm = TabMain:Dropdown({
+local eventtele_ddm = eventtele_sec:Dropdown({
     Title = "Select Event",
     Values = AVAIL_EVENT_OPTIONS,
     Value = {},
@@ -799,7 +802,7 @@ local eventtele_ddm = TabMain:Dropdown({
     end
 })
 
-local eventtele_tgl = TabMain:Toggle({
+local eventtele_tgl = eventtele_sec:Toggle({
     Title = "Auto Event Teleport",
     Desc  = "Auto Teleport to Event when available",
     Default = false,
@@ -832,13 +835,13 @@ local favfish_sec = TabBackpack:Section({
     Title = "Favorite Fish",
     TextXAlignment = "Left",
     TextSize = 17,
+    Opened = true
 })
 
 local autoFavFishFeature = nil
 local selectedTiers = {}
-
--- Dropdown: start dengan tier default, akan di-reload saat feature dimuat
-local favfish_ddm = TabBackpack:Dropdown({
+
+local favfish_ddm = favfish_sec:Dropdown({
     Title     = "Select Rarity",
     Values    = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common" }, -- default fallback
     Value     = {},
@@ -852,7 +855,7 @@ local favfish_ddm = TabBackpack:Dropdown({
     end
 })
 
-local favfish_tgl = TabBackpack:Toggle({
+local favfish_tgl = favfish_sec:Toggle({
     Title    = "Auto Favorite Fish",
     Desc     = "Automatically favorite fish with selected rarities",
     Default  = false,
@@ -928,13 +931,14 @@ local sellfish_sec = TabBackpack:Section({
     Title = "Sell Fish",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
 local sellfishFeature        = nil
 local currentSellThreshold   = "Legendary"
 local currentSellLimit       = 0
 
-local sellfish_dd = TabBackpack:Dropdown({
+local sellfish_dd = sellfish_sec:Dropdown({
     Title = "Select Rarity",
     Values = { "Secret", "Mythic", "Legendary" },
     Value = "Legendary",
@@ -946,7 +950,7 @@ local sellfish_dd = TabBackpack:Dropdown({
   end
 })
 
-local sellfish_in = TabBackpack:Input({
+local sellfish_in = sellfish_sec:Input({
     Title = "Sell Delay",
     Placeholder = "e.g 60 (second)",
     Desc = "Input delay in seconds.",
@@ -961,7 +965,7 @@ local sellfish_in = TabBackpack:Input({
   end
 })
 
-local sellfish_tgl = TabBackpack:Toggle({
+local sellfish_tgl = sellfish_sec:Toggle({
     Title = "Auto Sell",
     Desc = "",
     Default = false,
@@ -996,6 +1000,7 @@ local autoenchantrod_sec = TabAutomation:Section({
     Title = "Auto Enchant",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
 local function getEnchantName()
@@ -1012,7 +1017,7 @@ local autoEnchantFeature = nil
 local selectedEnchants   = {}
 local enchantName = getEnchantName()
 
-local enchant_ddm = TabAutomation:Dropdown({
+local enchant_ddm = enchant_sec:Dropdown({
     Title     = "Select Enchants",
     Values    = enchantName,       -- akan diisi saat modul diload
     Value     = {},
@@ -1028,7 +1033,7 @@ local enchant_ddm = TabAutomation:Dropdown({
     end
 })
 
-local enchant_tgl = TabAutomation:Toggle({
+local enchant_tgl = enchant_sec:Toggle({
     Title   = "Auto Enchant Rod",
     Default = false,
     Callback = function(state)
@@ -1092,9 +1097,10 @@ local autogift_sec = TabAutomation:Section({
     Title = "Auto Gift",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
-local autogiftplayer_dd = TabAutomation:Dropdown({
+local autogiftplayer_dd = autogift_sec:Dropdown({
     Title = "Select Player",
     Values = { "Category A", "Category B", "Category C" },
     Value = "Category A",
@@ -1103,7 +1109,7 @@ local autogiftplayer_dd = TabAutomation:Dropdown({
     end
 })
 
-local autogift_tgl = TabAutomation:Toggle({
+local autogift_tgl = autogift_sec:Toggle({
     Title = "Auto Gift Fish",
     Desc  = "Auto Gift held Fish/Item",
     Default = false,
@@ -1112,7 +1118,16 @@ local autogift_tgl = TabAutomation:Toggle({
     end
 })
 
-local autogiftacc_tgl = TabAutomation:Toggle({
+local autogiftrefresh_btn = autogift_sec:Button({
+    Title = "Refresh Player List",
+    Desc = "",
+    Locked = false,
+    Callback = function()
+        print("clicked")
+    end
+})
+
+local autogiftacc_tgl = autogift_sec:Toggle({
     Title = "Auto Accept Gift",
     Desc  = "",
     Default = false,
@@ -1127,12 +1142,13 @@ local shoprod_sec = TabShop:Section({
     Title = "Rod",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
 local autobuyrodFeature = nil
 local selectedRodsSet = {} -- State untuk menyimpan pilihan user
 
-local shoprod_ddm = TabShop:Dropdown({
+local shoprod_ddm = shoprod_sec:Dropdown({
     Title = "Select Rod",
     Values = {
         "Luck Rod",
@@ -1164,7 +1180,7 @@ local shoprod_ddm = TabShop:Dropdown({
     end
 })
 
-local shoprod_btn = TabShop:Button({
+local shoprod_btn = shoprod_sec:Button({
     Title = "Buy Rod",
     Desc = "Purchase selected rods (one-time buy)",
     Locked = false,
@@ -1294,6 +1310,7 @@ local shopbait_sec = TabShop:Section({
     Title = "Baits",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
 local function getBaitNames()
@@ -1322,7 +1339,7 @@ local autobuybaitFeature = nil
 local selectedBaitsSet = {}
 local baitName = getBaitNames()
 
-local shopbait_ddm = TabShop:Dropdown({
+local shopbait_ddm = shopbait_sec:Dropdown({
     Title = "Select Bait",
     Values = baitName,
     Value = {}, -- Start with empty selection
@@ -1341,7 +1358,7 @@ local shopbait_ddm = TabShop:Dropdown({
     end
 })
 
-local shopbait_btn = TabShop:Button({
+local shopbait_btn = shopbait_sec:Button({
     Title = "Buy Bait",
     Desc = "Purchase selected baits (one-time buy)",
     Locked = false,
@@ -1474,6 +1491,7 @@ local shopweather_sec = TabShop:Section({
     Title = "Weather",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
 local function getWeatherNames()
@@ -1502,7 +1520,7 @@ local weatherName = getWeatherNames()
 
 
 -- Multi dropdown (Values diisi setelah modul diload)
-local shopweather_ddm = TabShop:Dropdown({
+local shopweather_ddm = shopweather_sec:Dropdown({
     Title     = "Select Weather",
     Desc      = "",
     Values    = weatherName,
@@ -1523,7 +1541,7 @@ local shopweather_ddm = TabShop:Dropdown({
     end
 })
 
-local shopweather_tgl = TabShop:Toggle({
+local shopweather_tgl = shopweather_sec:Toggle({
     Title   = "Auto Buy Weather",
     Default = false,
     Callback = function(state)
@@ -1580,12 +1598,13 @@ local teleisland_sec = TabTeleport:Section({
     Title = "Islands",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
 local autoTeleIslandFeature = nil
 local currentIsland = "Fisherman Island"
 
-local teleisland_dd = TabTeleport:Dropdown({
+local teleisland_dd = teleisland_sec:Dropdown({
     Title = "Select Island",
     Values = {
         "Fisherman Island",
@@ -1610,7 +1629,7 @@ local teleisland_dd = TabTeleport:Dropdown({
 })
 
 
-local teleisland_btn = TabTeleport:Button({
+local teleisland_btn = teleisland_sec:Button({
     Title = "Teleport To Island",
     Desc  = "",
     Locked = false,
@@ -1646,9 +1665,10 @@ local teleplayer_sec = TabTeleport:Section({
     Title = "Players",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
-local teleplayer_dd = TabTeleport:Dropdown({
+local teleplayer_dd = teleplayer_sec:Dropdown({
     Title = "Select Player",
     Values = { "Category A", "Category B", "Category C" },
     Value = "Category A",
@@ -1657,7 +1677,7 @@ local teleplayer_dd = TabTeleport:Dropdown({
     end
 })
 
-local teleplayer_btn = TabTeleport:Button({
+local teleplayer_btn = teleplayer_sec:Button({
     Title = "Teleport To Player",
     Desc = "",
     Locked = false,
@@ -1666,27 +1686,8 @@ local teleplayer_btn = TabTeleport:Button({
     end
 })
 
---- === Misc === ---
---- Server
-local servutils_sec = TabMisc:Section({ 
-    Title = "Join Server",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
-local servjoin_in = TabMisc:Input({
-    Title = "Job Id",
-    Desc = "Input Server Job Id",
-    Value = "",
-    Placeholder = "000-000-000",
-    Type = "Input", 
-    Callback = function(input) 
-        print("delay entered: " .. input)
-    end
-})
-
-local servjoin_btn = TabMisc:Button({
-    Title = "Join Server",
+local teleplayerrefresh_btn = teleplayer_sec:Button({
+    Title = "Refresh Player List",
     Desc = "",
     Locked = false,
     Callback = function()
@@ -1694,46 +1695,13 @@ local servjoin_btn = TabMisc:Button({
     end
 })
 
-local servcopy_btn = TabMisc:Button({
-    Title = "Copy Server ID",
-    Desc = "Copy Current Server Job ID",
-    Locked = false,
-    Callback = function()
-        print("clicked")
-    end
-})
-
---- Server Hop
-local servhop_sec = TabMisc:Section({ 
-    Title = "Hop Server",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
-local servhop_dd = TabMisc:Dropdown({
-    Title = "Select Server Luck",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = "Category A",
-    Callback = function(option) 
-        print("Category selected: " .. option) 
-    end
-})
-
-local servhop_tgl = TabMisc:Toggle({
-    Title = "Auto Hop Server",
-    Desc  = "Auto Hop until found desired Server",
-    Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
-    end
-})
-
-
+--- === Misc === ---
 --- Webhook
 local webhookfish_sec = TabMisc:Section({ 
     Title = "Webhook",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
 -- State variables untuk webhook
@@ -1752,7 +1720,7 @@ for _, tier in ipairs(FISH_TIERS) do
     table.insert(WEBHOOK_FISH_OPTIONS, tier)
 end
 
-local webhookfish_in = TabMisc:Input({
+local webhookfish_in = webhookfish_sec:Input({
     Title = "Discord Webhook URL",
     Desc = "Paste your Discord webhook URL here",
     Value = "",
@@ -1769,7 +1737,7 @@ local webhookfish_in = TabMisc:Input({
     end
 })
 
-local webhookfish_ddm = TabMisc:Dropdown({
+local webhookfish_ddm = webhookfish_sec:Dropdown({
     Title = "Select Rarity",
     Desc = "Choose which fish types/rarities to send to webhook",
     Values = WEBHOOK_FISH_OPTIONS,
@@ -1792,7 +1760,7 @@ local webhookfish_ddm = TabMisc:Dropdown({
 })
 
 
-local webhookfish_tgl = TabMisc:Toggle({
+local webhookfish_tgl = webhookfish_sec:Toggle({
     Title = "Enable Fish Webhook",
     Desc = "Automatically send notifications when catching selected fish types",
     Default = false,
@@ -1949,6 +1917,8 @@ local eqfishradar_tgl = TabMisc:Toggle({
   end
 end
 })
+
+Window:SelectTab(1)
 
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
