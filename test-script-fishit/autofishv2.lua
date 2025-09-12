@@ -60,7 +60,7 @@ local rodEquipped = false
 local FISHING_CONFIGS = {
     ["Perfect"] = {
         chargeTime = 1.0,
-        waitBetween = 0.3,     -- Faster cycle after catch
+        waitBetween = 0.1,     -- Faster cycle after catch
         rodSlot = 1,
         spamDelay = 0.05,      -- Spam every 50ms
         maxSpamTime = 3,       -- Stop spam after 3s
@@ -68,7 +68,7 @@ local FISHING_CONFIGS = {
     },
     ["Normal"] = {
         chargeTime = 1.0,
-        waitBetween = 0.3,     -- Faster cycle after catch
+        waitBetween = 0.1,     -- Faster cycle after catch
         rodSlot = 1,
         spamDelay = 0.1,
         maxSpamTime = 8,
@@ -317,8 +317,8 @@ function AutoFishFeature:CastRod()
     if not RequestFishing then return false end
     
     local success = pcall(function()
-        local x = -1.2
-        local z = 0.8
+        local x = -1.233184814453125
+        local z = 0.9999120558411321
         return RequestFishing:InvokeServer(x, z)
     end)
     
