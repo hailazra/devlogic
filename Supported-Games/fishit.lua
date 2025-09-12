@@ -165,10 +165,10 @@ WindUI:AddTheme({
     Dialog      = "#13151A", -- panel
     Outline     = "#303845", -- border dingin (bukan putih)
     Text        = "#E9ECF2", -- teks nyaman
-    Placeholder = "#9AA3AE", -- hint
+    Placeholder = "#999999", -- hint
     Background  = "#0A0B0D", -- hampir hitam
     Button      = "#1E232C", -- tombol idle
-    Icon        = "#F2F6FF", -- ikon sedikit lebih terang
+    Icon        = "#a1a1aa", -- ikon sedikit lebih terang
 })
 
 --========== WINDOW ==========
@@ -178,7 +178,7 @@ local Window = WindUI:CreateWindow({
     Author        = "Fish It",
     Folder        = "AtresHub",
     Size          = UDim2.fromOffset(250, 250),
-    Theme         = "StarlessMonoPro",
+    Theme         = "Dark",
     Resizable     = false,
     SideBarWidth  = 150,
     HideSearchBar = true,
