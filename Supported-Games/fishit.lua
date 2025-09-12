@@ -1659,8 +1659,8 @@ local currentPlayerName = nil
 
 local teleplayer_dd = teleplayer_sec:Dropdown({
     Title = "Select Player",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = "Category A",
+    Values = listPlayers(true),
+    Value = "",
     Callback = function(option) 
         currentPlayerName = name
         -- sinkron ke feature kalau sudah diload
