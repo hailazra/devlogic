@@ -179,12 +179,12 @@ WindUI:AddTheme({
 
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
-    Title         = "StarlessMono",
+    Title         = "ATRES",
     Icon          = "rbxassetid://123156553209294",
     Author        = "Fish It",
     Folder        = "AtresHub",
     Size          = UDim2.fromOffset(250, 250),
-    Theme         = "AtresBlue",
+    Theme         = "StarlessMono",
     Resizable     = false,
     SideBarWidth  = 150,
     HideSearchBar = true,
