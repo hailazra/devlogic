@@ -996,7 +996,7 @@ local sellfish_tgl = sellfish_sec:Toggle({
 
 --- === AUTOMATION === ---
 --- Auto Enchant Rod
-local autoenchantrod_sec = TabAutomation:Section({ 
+local enchant_sec = TabAutomation:Section({ 
     Title = "Auto Enchant",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
@@ -1017,7 +1017,7 @@ local autoEnchantFeature = nil
 local selectedEnchants   = {}
 local enchantName = getEnchantName()
 
-local enchant_ddm = autoenchantrod_sec:Dropdown({
+local enchant_ddm = enchant_sec:Dropdown({
     Title     = "Select Enchants",
     Values    = enchantName,       -- akan diisi saat modul diload
     Value     = {},
@@ -1033,7 +1033,7 @@ local enchant_ddm = autoenchantrod_sec:Dropdown({
     end
 })
 
-local enchant_tgl = autoenchantrod_sec:Toggle({
+local enchant_tgl = enchant_sec:Toggle({
     Title   = "Auto Enchant Rod",
     Default = false,
     Callback = function(state)
