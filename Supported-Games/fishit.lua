@@ -1996,24 +1996,14 @@ local boostfps_btn = TabMisc:Button({
     Locked = false,
     Callback = function()
         if alreadyApplied then
-            WindUI:Notify({
-                Title = "Boost FPS",
-                Content = "Already applied",
-                Icon = "info",
-                Duration = 2
-            })
+            WindUI:Notify({ Title="Boost FPS", Content="Already applied (Ultra)", Icon="info", Duration=2 })
             return
         end
 
         if not boostFeature then
-            boostFeature = FeatureManager:GetFeature("BoostFPS")
+            boostFeature = FeatureManager:LoadFeature("BoostFPS")
             if not boostFeature then
-                WindUI:Notify({
-                    Title = "Failed",
-                    Content = "Could not load BoostFPS",
-                    Icon = "x",
-                    Duration = 3
-                })
+                WindUI:Notify({ Title="Failed", Content="Could not load BoostFPS", Icon="x", Duration=3 })
                 return
             end
         end
@@ -2024,19 +2014,9 @@ local boostfps_btn = TabMisc:Button({
 
         if ok then
             alreadyApplied = true
-            WindUI:Notify({
-                Title = "Boost FPS",
-                Content = "Applied",
-                Icon = "check",
-                Duration = 2
-            })
+            WindUI:Notify({ Title="Boost FPS", Content="Applied: Ultra Low", Icon="check", Duration=2 })
         else
-            WindUI:Notify({
-                Title = "Error",
-                Content = tostring(err),
-                Icon = "x",
-                Duration = 3
-            })
+            WindUI:Notify({ Title="Error", Content=tostring(err), Icon="x", Duration=3 })
         end
     end
 })
@@ -2063,7 +2043,7 @@ if type(Window.OnDestroy) == "function" then
         end
         FeatureManager.LoadedFeatures = {}
         
-        -- Cleanup custom icon - DIPERBAIKI
+        -- Cleanup custom icon
         if _G.DevLogicIconCleanup then
             pcall(_G.DevLogicIconCleanup)
             _G.DevLogicIconCleanup = nil
