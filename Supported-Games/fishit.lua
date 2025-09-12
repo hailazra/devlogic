@@ -187,7 +187,7 @@ local Window = WindUI:CreateWindow({
 
 WindUI:SetFont("rbxasset://12187373592")
 
-WindUI.TransparencyValue = 0.25   -- 0 = solid, 1 = full tembus
+WindUI.TransparencyValue = 0.1  -- 0 = solid, 1 = full tembus
 Window:ToggleTransparency(true)
 
 -- =========================
@@ -636,7 +636,7 @@ local info_sec = TabHome:Section({
 })
 
 local info_para = TabHome:Paragraph({
-    Title = "Changelog v0.0.4",
+    Title = "Changelog",
     Desc = CHANGELOG,
     Locked = false,
     Buttons = {
@@ -668,6 +668,7 @@ local currentFishingMode = "Fast"
 
 local autofishmode_dd = autofish_sec:Dropdown({
     Title = "Fishing Mode",
+    Desc  = "Select Fishing Mode",
     Values = { "Fast", "Slow" },
     Value = "Fast",
     Callback = function(option) 
@@ -734,12 +735,12 @@ local cancelautofish_btn = autofish_sec:Button({
             end)
 
             if success then
-                print("[CancelFishingInputs] Sukses invoke!", result)
+                print("[CancelFishingInputs] Fixed", result)
             else
-                warn("[CancelFishingInputs] Gagal invoke!", result)
+                warn("[CancelFishingInputs] Error, Report to Dev", result)
             end
         else
-            warn("[CancelFishingInputs] RemoteFunction tidak ditemukan!")
+            warn("[CancelFishingInputs] Report this bug to Dev")
         end
     end
 })
@@ -767,6 +768,7 @@ end
 
 local eventtele_ddm = eventtele_sec:Dropdown({
     Title = "Select Event",
+    Desc  = "Will priotitize selected Event",
     Values = AVAIL_EVENT_OPTIONS,
     Value = {},
     Multi = true,
@@ -916,6 +918,7 @@ local currentSellLimit       = 0
 
 local sellfish_dd = sellfish_sec:Dropdown({
     Title = "Select Rarity",
+    Desc  = "Rarity Threshold",
     Values = { "Secret", "Mythic", "Legendary" },
     Value = "Legendary",
     Callback = function(option)
@@ -1690,7 +1693,7 @@ end
 
 local webhookfish_in = webhookfish_sec:Input({
     Title = "Discord Webhook URL",
-    Desc = "Paste your Discord webhook URL here",
+    Desc = "",
     Value = "",
     Placeholder = "https://discord.com/api/webhooks/...",
     Type = "Input",
@@ -1707,7 +1710,7 @@ local webhookfish_in = webhookfish_sec:Input({
 
 local webhookfish_ddm = webhookfish_sec:Dropdown({
     Title = "Select Rarity",
-    Desc = "Choose which fish types/rarities to send to webhook",
+    Desc = "Choose which fish rarities to send to webhook",
     Values = WEBHOOK_FISH_OPTIONS,
     Value = {"Legendary", "Mythic", "Secret"}, -- Default selection
     Multi = true,
@@ -1730,7 +1733,7 @@ local webhookfish_ddm = webhookfish_sec:Dropdown({
 
 local webhookfish_tgl = webhookfish_sec:Toggle({
     Title = "Enable Fish Webhook",
-    Desc = "Automatically send notifications when catching selected fish types",
+    Desc = "Automatically send notifications to webhook",
     Default = false,
     Callback = function(state)
         print("[Webhook] Toggle:", state)
@@ -1752,7 +1755,7 @@ local webhookfish_tgl = webhookfish_sec:Toggle({
                 WindUI:Notify({
                     Title = "Warning",
                     Content = "No fish types selected - will monitor all catches",
-                    Icon = "alert-triangle",
+                    Icon = "triangle-alert",
                     Duration = 3
                 })
             end
@@ -1816,7 +1819,7 @@ local webhookfish_tgl = webhookfish_sec:Toggle({
 
 --- Other
 local others_sec = TabMisc:Section({ 
-    Title = "Vuln",
+    Title = "Other",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
