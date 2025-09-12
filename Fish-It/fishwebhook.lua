@@ -640,9 +640,9 @@ local function label(icon, text) return string.format("%s %s", icon or "", text 
     local embed = {
         title = (info.shiny and " " or " ") .. "New Catch ",
         description = string.format("**Player:** %s", hide(LocalPlayer.Name)),
-        color = info.shiny and 0xFFD700 or 0x87CEEB, -- Gold for shiny, light blue for normal
+        color = info.shiny and 0xFFD700 or 0x004293, -- Gold for shiny, light blue for normal
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-        footer = { text = ".devlogic | Fish-It Notifier" },fields = {
+        footer = { text = "AtresHub | Fish-It Notifier" },fields = {
             { name = label(EMOJI.fish, "Fish Name"),  value = box(fishName),                   inline = false },
             { name = label(EMOJI.weight, "Weight"),   value = box(toKg(info.weight)),                           inline = true  },
             { name = label(EMOJI.chance, "Chance"),   value = box(fmtChanceOneInFromNumber(info.chance)),                        inline = true  },
@@ -665,7 +665,7 @@ local function label(icon, text) return string.format("%s %s", icon or "", text 
     end
     
     sendWebhook({ 
-        username = ".devlogic ", 
+        username = "Atres Notifier ", 
         embeds = {embed} 
     })
     
