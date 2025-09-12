@@ -1642,16 +1642,26 @@ local teleplayer_sec = TabTeleport:Section({
     TextSize = 17, -- Default Size
 })
 
+-- helpers
 local function listPlayers(excludeSelf)
     local me = LocalPlayer and LocalPlayer.Name
-    local names = {}
+    local t = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if (not excludeSelf) or (me and p.Name ~= me) then
-            table.insert(names, p.Name)
+        if not excludeSelf or (me and p.Name ~= me) then
+            table.insert(t, p.Name)
         end
     end
-    table.sort(names, function(a,b) return a:lower() < b:lower() end)
-    return names
+    table.sort(t, function(a, b) return a:lower() < b:lower() end)
+    return t
+end
+
+-- normalize apapun yang dikasih Dropdown (string atau table)
+local function normalizeOption(opt)
+    if type(opt) == "string" then return opt end
+    if type(opt) == "table" then
+        return opt.Value or opt.value or opt[1] or opt.Selected or opt.selection
+    end
+    return nil
 end
 
 local teleplayerFeature = nil
@@ -1662,11 +1672,13 @@ local teleplayer_dd = teleplayer_sec:Dropdown({
     Values = listPlayers(true),
     Value = "",
     Callback = function(option) 
-        currentPlayerName = option
-        -- sinkron ke feature kalau sudah diload
+        local name = normalizeOption(option)
+        currentPlayerName = name
         if teleplayerFeature and teleplayerFeature.SetTarget then
-            teleplayerFeature:SetTarget(option)
+            teleplayerFeature:SetTarget(name)
         end
+        -- optional: debug
+         print("[teleplayer] selected:", name, typeof(option))
     end
 })
 
@@ -1675,31 +1687,33 @@ local teleplayer_btn = teleplayer_sec:Button({
     Desc = "",
     Locked = false,
     Callback = function()
-         if not currentPlayerName or currentPlayerName == "" then
+         if not teleplayerFeature then
+            teleplayerFeature = FeatureManager:GetFeature("AutoTeleportPlayer", {
+                dropdown       = teleplayer_dd,
+                refreshButton  = teleplayerrefresh_btn,
+                teleportButton = nil, -- ga wajib dipakai modul
+            })
+            if not teleplayerFeature then
+                WindUI:Notify({ Title="Error", Content="AutoTeleportPlayer gagal dimuat", Icon="x", Duration=3 })
+                return
+            end
+        end
+
+        -- fallback: kalau somehow current masih nil, coba tarik dari dropdown
+        if (not currentPlayerName or currentPlayerName == "") then
+            local v = rawget(teleplayer_dd, "Value")
+            currentPlayerName = normalizeOption(v)
+        end
+
+        if (not currentPlayerName or currentPlayerName == "") then
             WindUI:Notify({ Title = "Teleport Failed", Content = "Pilih player dulu dari dropdown", Icon = "x", Duration = 3 })
             return
         end
 
-        -- Lazy-load fitur sekali, konsisten dengan arsitektur FeatureManager
-        if not teleplayerFeature then
-            teleplayerFeature = FeatureManager:LoadFeature("AutoTeleportPlayer", {
-                dropdown       = teleplayer_dd,
-                refreshButton  = teleplayerrefresh_btn,
-                teleportButton = teleplayer_btn
-            })
-        end
-
-        if not teleplayerFeature then
-            WindUI:Notify({ Title = "Error", Content = "AutoTeleportPlayer gagal dimuat", Icon = "x", Duration = 3 })
-            return
-        end
-
-        -- Set target lalu eksekusi teleport
         teleplayerFeature:SetTarget(currentPlayerName)
         local ok = teleplayerFeature:Teleport()
         if not ok then
-            -- Modul sudah punya notifikasi internal; ini fallback aja
-            WindUI:Notify({ Title = "Teleport Failed", Content = "Gagal teleport (cek anti-cheat/character target)", Icon = "x", Duration = 3 })
+            WindUI:Notify({ Title = "Teleport Failed", Content = "Gagal teleport (anti-cheat/target belum spawn?)", Icon = "x", Duration = 3 })
         end
     end
 })
@@ -1710,10 +1724,16 @@ local teleplayerrefresh_btn = teleplayer_sec:Button({
     Locked = false,
     Callback = function()
        local names = listPlayers(true)
-        if teleplayer_dd.Reload then
-            teleplayer_dd:Reload(names)
-        elseif teleplayer_dd.SetOptions then
-            teleplayer_dd:SetOptions(names)
+        teleplayer_dd:Refresh(names) -- <— API resmi
+        -- jaga state: kalau current hilang, auto-pick pertama biar nggak nil
+        if not table.find(names, currentPlayerName) then
+            currentPlayerName = names[1]
+            if currentPlayerName then
+                teleplayer_dd:Select(currentPlayerName) -- <— API resmi
+                if teleplayerFeature and teleplayerFeature.SetTarget then
+                    teleplayerFeature:SetTarget(currentPlayerName)
+                end
+            end
         end
         WindUI:Notify({ Title = "Players", Content = ("Online: %d"):format(#names), Icon = "users", Duration = 2 })
     end
