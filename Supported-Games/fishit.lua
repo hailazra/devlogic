@@ -165,15 +165,15 @@ end
 task.spawn(preloadAllFeatures)
 
 WindUI:AddTheme({
-    Name        = "StarlessMono",
-    Accent      = "#EDEFFB",
-    Dialog      = "#11151B",
-    Outline     = "#2A313B",
-    Text        = "#E7EBF3",
-    Placeholder = "#9AA3AE",
-    Background  = "#0A0D12",
-    Button      = "#1A202C",
-    Icon        = "#F2F6FF",
+    Name        = "StarlessMonoBlue",
+    Accent      = "#9AB6FF",
+    Dialog      = "#0F1320",
+    Outline     = "#2A3650",
+    Text        = "#E6EEFF",
+    Placeholder = "#93A4C6",
+    Background  = "#070A12",
+    Button      = "#172340",
+    Icon        = "#BFD1FF",
 })
 
 --========== WINDOW ==========
@@ -183,7 +183,7 @@ local Window = WindUI:CreateWindow({
     Author        = "Fish It",
     Folder        = "AtresHub",
     Size          = UDim2.fromOffset(250, 250),
-    Theme         = "StarlessMono",
+    Theme         = "StarlessMonoBlue",
     Resizable     = false,
     SideBarWidth  = 150,
     HideSearchBar = true,
