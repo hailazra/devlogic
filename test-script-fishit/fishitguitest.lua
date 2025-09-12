@@ -715,7 +715,7 @@ local currentFishingMode = "Perfect"
 
 local autofishmode_dd = TabMain:Dropdown({
     Title = "Fishing Mode",
-    Values = { "Perfect", "OK", "Mid" },
+    Values = { "Perfect", "Normal" },
     Value = "Perfect",
     Callback = function(option) 
         currentFishingMode = option
