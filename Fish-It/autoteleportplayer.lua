@@ -13,6 +13,7 @@ local AutoTeleportPlayer = {}
 AutoTeleportPlayer.__index = AutoTeleportPlayer
 
 -- Services
+local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
@@ -74,26 +75,55 @@ local function tpNotify(title, content, icon, duration)
 end
 
 -- Hard teleport to CFrame (sedikit di belakang target + offset Y)
-function AutoTeleportPlayer:TeleportToPosition(baseCF)
+function AutoTeleportPlayer:TeleportToPosition(baseCF, targetCharacter)
     if not LocalPlayer or not LocalPlayer.Character then
         warn("[AutoTeleportPlayer] Local character not found")
         return false
     end
-    local myHRP = getHRP(LocalPlayer.Character)
-    if not myHRP then
-        warn("[AutoTeleportPlayer] Local HumanoidRootPart not found")
+    local myChar = LocalPlayer.Character
+    local myHRP  = myChar:FindFirstChild("HumanoidRootPart")
+    local hum    = myChar:FindFirstChildOfClass("Humanoid")
+    if not (myHRP and hum) then
+        warn("[AutoTeleportPlayer] Missing HRP/Humanoid")
         return false
     end
 
-    -- Posisi di belakang target + offset Y
-    local behind = baseCF.Position - (baseCF.LookVector * SETTINGS.behindDist)
-    local final = CFrame.new(behind) * CFrame.Angles(0, baseCF:ToEulerAnglesYXZ())
-    final = final + Vector3.new(0, SETTINGS.yOffset, 0)
+   -- Posisi "di belakang" target dalam local-space target
+    -- catatan: di CFrame, +Z itu ke belakang relatif LookVector
+    local spawnCF = baseCF * CFrame.new(0, 0, SETTINGS.behindDist)
 
+    -- Raycast ke bawah untuk cari permukaan lantai
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    rp.FilterDescendantsInstances = { myChar }
+    if targetCharacter then
+        table.insert(rp.FilterDescendantsInstances, targetCharacter)
+    end
+
+    local origin = spawnCF.Position + Vector3.new(0, 50, 0)
+    local dir    = Vector3.new(0, -500, 0)
+    local hit    = Workspace:Raycast(origin, dir, rp)
+
+    local finalPos
+    if hit then
+        -- Stand height: permukaan + HipHeight + setengah tinggi HRP
+        local standY = hit.Position.Y + hum.HipHeight + (myHRP.Size.Y * 0.5)
+        finalPos = Vector3.new(spawnCF.X, standY, spawnCF.Z)
+    else
+        -- Fallback: pakai offset kecil (lebih rendah dari +6 biar ga “melayang lama”)
+        finalPos = (spawnCF + Vector3.new(0, math.max(2, SETTINGS.yOffset - 2), 0)).Position
+    end
+
+    -- Orientasi hadap sama dengan target
+    local finalCF = CFrame.lookAt(finalPos, finalPos + baseCF.LookVector)
+
+    -- Nolkan kecepatan biar ga seluncur / jatoh
     local ok = pcall(function()
-        myHRP.CFrame = final
-        -- -- Soft teleport alternative (lebih aman anti-cheat, tapi bisa lambat):
-        -- LocalPlayer.Character:PivotTo(final)
+        myHRP.AssemblyLinearVelocity  = Vector3.zero
+        myHRP.AssemblyAngularVelocity = Vector3.zero
+        -- Hard TP (cepat). Kalau anti-cheat sensitif, ganti ke PivotTo:
+        myHRP.CFrame = finalCF
+        -- myChar:PivotTo(finalCF) -- opsi “soft”
     end)
     return ok
 end
@@ -154,7 +184,7 @@ function AutoTeleportPlayer:Teleport(optionalPlayerName)
         return false
     end
 
-    local ok = self:TeleportToPosition(cf)
+    local ok = self:TeleportToPosition(cf, target.Character)
     if ok then
         print("[AutoTeleportPlayer] Teleported to", name)
         tpNotify("Teleport Success", "Ke " .. name, "map-pin", 2)
