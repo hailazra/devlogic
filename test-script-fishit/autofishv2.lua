@@ -40,7 +40,6 @@ local isRunning = false
 local currentMode = "Perfect"
 local connection = nil
 local spamConnection = nil
-local equipConnection = nil
 local fishObtainedConnection = nil
 local controls = {}
 local fishingInProgress = false
@@ -50,17 +49,14 @@ local remotesInitialized = false
 -- Spam and completion tracking
 local spamActive = false
 local completionCheckActive = false
+local lastBackpackCount = 0
 local fishCaughtFlag = false
-
--- Auto equip state
-local autoEquipEnabled = true
-local rodEquipped = false
 
 -- Rod-specific configs
 local FISHING_CONFIGS = {
     ["Perfect"] = {
         chargeTime = 1.0,
-        waitBetween = 0.1,     -- Faster cycle after catch
+        waitBetween = 0,
         rodSlot = 1,
         spamDelay = 0.05,      -- Spam every 50ms
         maxSpamTime = 3,       -- Stop spam after 3s
@@ -68,12 +64,12 @@ local FISHING_CONFIGS = {
     },
     ["Normal"] = {
         chargeTime = 1.0,
-        waitBetween = 0.1,     -- Faster cycle after catch
+        waitBetween = 0,
         rodSlot = 1,
         spamDelay = 0.1,
         maxSpamTime = 8,
         skipMinigame = false,  -- Play tap-tap animation
-        minigameDuration = 1.5 -- Duration before firing completion (1.5 seconds)
+        minigameDuration = 1.5 -- Duration before firing completion
     }
 }
 
@@ -87,7 +83,10 @@ function AutoFishFeature:Init(guiControls)
         return false
     end
     
-    print("[AutoFish] Initialized with SPAM method (FIXED) - Perfect & Normal modes")
+    -- Initialize backpack count for completion detection
+    self:UpdateBackpackCount()
+    
+    print("[AutoFish] Initialized with SPAM method - Perfect & Normal modes")
     return true
 end
 
@@ -105,20 +104,12 @@ function AutoFishFeature:Start(config)
     fishingInProgress = false
     spamActive = false
     lastFishTime = 0
-    rodEquipped = false
-    autoEquipEnabled = true
     fishCaughtFlag = false
     
-    print("[AutoFish] Started SPAM method (FIXED) - Mode:", currentMode)
+    print("[AutoFish] Started SPAM method - Mode:", currentMode)
     
-    -- Setup fish obtained listener for instant detection
+    -- Setup fish obtained listener
     self:SetupFishObtainedListener()
-    
-    -- Auto equip monitoring (continuous)
-    equipConnection = RunService.Heartbeat:Connect(function()
-        if not isRunning then return end
-        self:MonitorRodEquip()
-    end)
     
     -- Main fishing loop
     connection = RunService.Heartbeat:Connect(function()
@@ -135,8 +126,6 @@ function AutoFishFeature:Stop()
     fishingInProgress = false
     spamActive = false
     completionCheckActive = false
-    rodEquipped = false
-    autoEquipEnabled = false
     fishCaughtFlag = false
     
     if connection then
@@ -149,17 +138,12 @@ function AutoFishFeature:Stop()
         spamConnection = nil
     end
     
-    if equipConnection then
-        equipConnection:Disconnect()
-        equipConnection = nil
-    end
-    
     if fishObtainedConnection then
         fishObtainedConnection:Disconnect()
         fishObtainedConnection = nil
     end
     
-    print("[AutoFish] Stopped SPAM method (FIXED)")
+    print("[AutoFish] Stopped SPAM method")
 end
 
 -- Setup fish obtained notification listener
@@ -187,7 +171,7 @@ function AutoFishFeature:SetupFishObtainedListener()
             
             -- Reset fishing state for next cycle (fast restart)
             spawn(function()
-                wait(0.1) -- Small delay for stability
+                task.wait(0.1) -- Small delay for stability
                 fishingInProgress = false
                 fishCaughtFlag = false
                 print("[AutoFish] Ready for next cycle (fast restart)")
@@ -198,42 +182,9 @@ function AutoFishFeature:SetupFishObtainedListener()
     print("[AutoFish] Fish obtained listener setup complete")
 end
 
--- Monitor and auto-equip rod
-function AutoFishFeature:MonitorRodEquip()
-    if not autoEquipEnabled or fishingInProgress then return end
-    
-    local config = FISHING_CONFIGS[currentMode]
-    local isEquipped = self:IsRodEquipped()
-    
-    if not isEquipped then
-        rodEquipped = false
-        -- Auto equip rod
-        self:EquipRod(config.rodSlot)
-        wait(0.1) -- Small delay after equipping
-    else
-        rodEquipped = true
-    end
-end
-
--- Check if rod is equipped
-function AutoFishFeature:IsRodEquipped()
-    if not LocalPlayer.Character then return false end
-    
-    local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
-    if tool then
-        local toolName = tool.Name:lower()
-        -- Check if it's a fishing rod (adjust based on game's rod names)
-        if toolName:find("rod") or toolName:find("fishing") or toolName:find("pole") then
-            return true
-        end
-    end
-    
-    return false
-end
-
 -- Main spam-based fishing loop
 function AutoFishFeature:SpamFishingLoop()
-    if fishingInProgress or spamActive or not rodEquipped then return end
+    if fishingInProgress or spamActive then return end
     
     local currentTime = tick()
     local config = FISHING_CONFIGS[currentMode]
@@ -261,14 +212,13 @@ end
 function AutoFishFeature:ExecuteSpamFishingSequence()
     local config = FISHING_CONFIGS[currentMode]
     
-    -- Step 1: Ensure rod is equipped (double check)
-    if not self:IsRodEquipped() then
-        if not self:EquipRod(config.rodSlot) then
-            return false
-        end
-        wait(0.2) -- Wait for equip to complete
+    -- Step 1: Equip rod
+    if not self:EquipRod(config.rodSlot) then
+        return false
     end
     
+    task.wait(0.1)
+
     -- Step 2: Charge rod
     if not self:ChargeRod(config.chargeTime) then
         return false
@@ -292,10 +242,6 @@ function AutoFishFeature:EquipRod(slot)
     local success = pcall(function()
         EquipTool:FireServer(slot)
     end)
-    
-    if success then
-        wait(0.1) -- Give time for equip to process
-    end
     
     return success
 end
@@ -337,12 +283,15 @@ function AutoFishFeature:StartCompletionSpam(delay, maxTime)
     
     print("[AutoFish] Starting completion SPAM - Mode:", currentMode)
     
+    -- Update backpack count before spam
+    self:UpdateBackpackCount()
+    
     spawn(function()
         -- Mode-specific behavior
         if currentMode == "Normal" and not config.skipMinigame then
             -- Normal mode: Wait for minigame animation
             print("[AutoFish] Normal mode: Playing minigame animation for", config.minigameDuration, "seconds")
-            wait(config.minigameDuration)
+            task.wait(config.minigameDuration)
             
             -- Check if fish was already caught during animation
             if fishCaughtFlag or not isRunning or not spamActive then
@@ -357,13 +306,13 @@ function AutoFishFeature:StartCompletionSpam(delay, maxTime)
             -- Fire completion
             local fired = self:FireCompletion()
             
-            -- Check if fishing completed using notification listener
-            if fishCaughtFlag then
-                print("[AutoFish] Fish caught detected via notification!")
+            -- Check if fishing completed using notification listener OR backpack method
+            if fishCaughtFlag or self:CheckFishingCompleted() then
+                print("[AutoFish] Fish caught detected!")
                 break
             end
             
-            wait(delay)
+            task.wait(delay)
         end
         
         -- Stop spam
@@ -387,23 +336,54 @@ function AutoFishFeature:FireCompletion()
     return success
 end
 
--- Check if fishing completed using notification listener (PRIMARY METHOD)
+-- Check if fishing completed successfully (fallback method)
 function AutoFishFeature:CheckFishingCompleted()
     -- Primary method: notification listener flag
     if fishCaughtFlag then
         return true
     end
     
-    -- Fallback method: Check tool state (rarely needed now)
+    -- Fallback method: Check backpack item count increase
+    local currentCount = self:GetBackpackItemCount()
+    if currentCount > lastBackpackCount then
+        lastBackpackCount = currentCount
+        return true
+    end
+    
+    -- Method 3: Check character tool state
     if LocalPlayer.Character then
         local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
         if not tool then
-            -- Tool unequipped might indicate completion
-            return false -- Don't rely on this alone for spam method
+            -- Tool unequipped = fishing might be done
+            return false -- Don't rely on this alone
         end
     end
     
     return false
+end
+
+-- Update backpack count
+function AutoFishFeature:UpdateBackpackCount()
+    lastBackpackCount = self:GetBackpackItemCount()
+end
+
+-- Get current backpack item count
+function AutoFishFeature:GetBackpackItemCount()
+    local count = 0
+    
+    if LocalPlayer.Backpack then
+        count = count + #LocalPlayer.Backpack:GetChildren()
+    end
+    
+    if LocalPlayer.Character then
+        for _, child in pairs(LocalPlayer.Character:GetChildren()) do
+            if child:IsA("Tool") then
+                count = count + 1
+            end
+        end
+    end
+    
+    return count
 end
 
 -- Get status
@@ -413,9 +393,8 @@ function AutoFishFeature:GetStatus()
         mode = currentMode,
         inProgress = fishingInProgress,
         spamming = spamActive,
-        rodEquipped = rodEquipped,
-        autoEquip = autoEquipEnabled,
         lastCatch = lastFishTime,
+        backpackCount = lastBackpackCount,
         fishCaughtFlag = fishCaughtFlag,
         remotesReady = remotesInitialized,
         listenerReady = fishObtainedConnection ~= nil
@@ -437,18 +416,6 @@ function AutoFishFeature:SetMode(mode)
     return false
 end
 
--- Toggle auto equip
-function AutoFishFeature:SetAutoEquip(enabled)
-    autoEquipEnabled = enabled
-    print("[AutoFish] Auto equip", enabled and "enabled" or "disabled")
-end
-
--- Manual equip rod
-function AutoFishFeature:ManualEquipRod()
-    local config = FISHING_CONFIGS[currentMode]
-    return self:EquipRod(config.rodSlot)
-end
-
 -- Get notification listener info for debugging
 function AutoFishFeature:GetNotificationInfo()
     return {
@@ -460,7 +427,7 @@ end
 
 -- Cleanup
 function AutoFishFeature:Cleanup()
-    print("[AutoFish] Cleaning up SPAM method (FIXED)...")
+    print("[AutoFish] Cleaning up SPAM method...")
     self:Stop()
     controls = {}
     remotesInitialized = false
