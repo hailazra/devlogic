@@ -166,15 +166,16 @@ task.spawn(preloadAllFeatures)
 
 WindUI:AddTheme({
     Name = "StarlessMono",
-    Accent = "#EDEFFB",      -- starlight (off-white lembut)
-    Dialog = "#11151B",      -- panel/modal
-    Outline = "#2A313B",     -- garis/border
-    Text = "#E7EBF3",        -- teks utama (bukan putih murni)
-    Placeholder = "#9AA3AE", -- hint/muted
-    Background = "#0A0D12FF",-- hampir hitam (OLED friendly)
-    Button = "#1A202C",      -- tombol idle gelap
-    Icon = "#F2F6FF",        -- ikon lebih terang (glow feel)
+    Accent = "#edeffb",
+    Dialog = "#11151b",
+    Outline = "#2a313b",
+    Text = "#e7ebf3",
+    Placeholder = "#9aa3ae",
+    Background = "#0a0d12",
+    Button = "#1a202c",
+    Icon = "#f2f6ff",
 })
+
 
 
 --========== WINDOW ==========
