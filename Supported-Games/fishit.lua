@@ -104,14 +104,74 @@ function FeatureManager:GetFeature(name)
     return self.LoadedFeatures[name]
 end
 
+-- ===========================
+-- PRELOAD ALL FEATURES
+-- ===========================
+local function preloadAllFeatures()
+    print("[FeatureManager] Starting preload all features...")
+    
+    -- Urutan loading (critical features first)
+    local loadOrder = {
+        "AntiAfk",           -- Utility first
+        "AutoFish",          -- Core features
+        "AutoSellFish",
+        "AutoTeleportIsland",
+        "AutoTeleportEvent",
+        "AutoEnchantRod",
+        "AutoFavoriteFish",
+        "FishWebhook",       -- Notification features
+        "AutoBuyWeather",    -- Shop features
+        "AutoBuyBait",
+        "AutoBuyRod",
+        "AutoGearOxyRadar"   -- Advanced features
+    }
+    
+    local loadedCount = 0
+    local totalFeatures = #loadOrder
+    
+    for _, featureName in ipairs(loadOrder) do
+        local success = pcall(function()
+            local feature = FeatureManager:LoadFeature(featureName)
+            if feature then
+                loadedCount = loadedCount + 1
+                print(string.format("[FeatureManager] ✓ %s loaded (%d/%d)", 
+                    featureName, loadedCount, totalFeatures))
+            else
+                warn(string.format("[FeatureManager] ✗ Failed to load %s", featureName))
+            end
+        end)
+        
+        if not success then
+            warn(string.format("[FeatureManager] ✗ Error loading %s", featureName))
+        end
+        
+        -- Small delay untuk prevent overwhelming
+        task.wait(0.1)
+    end
+    
+    print(string.format("[FeatureManager] Preloading completed: %d/%d features loaded", 
+        loadedCount, totalFeatures))
+    
+    -- Optional: Show completion notification
+    WindUI:Notify({
+        Title = "Ready",
+        Content = string.format("%d features loaded", loadedCount),
+        Icon = "check",
+        Duration = 2
+    })
+end
+
+-- Execute preloading immediately
+task.spawn(preloadAllFeatures)
+
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
-    Title         = ".devlogic",
-    Icon          = "rbxassetid://73063950477508",
+    Title         = "AtresHub",
+    Icon          = "rbxassetid://87777871973025",
     Author        = "Fish It",
-    Folder        = ".devlogichub",
+    Folder        = "AtresHub",
     Size          = UDim2.fromOffset(250, 250),
-    Theme         = "Dark",
+    Theme         = "Midnight",
     Resizable     = false,
     SideBarWidth  = 120,
     HideSearchBar = true,
@@ -119,281 +179,410 @@ local Window = WindUI:CreateWindow({
 
 WindUI:SetFont("rbxasset://12187373592")
 
--- CUSTOM ICON INTEGRATION - Disable default open button
-Window:EditOpenButton({
-    Title = "",
-    Icon = "rbxassetid://73063950477508",
-    CornerRadius = UDim.new(0,1),
-    StrokeThickness = 1,
-    Color = ColorSequence.new( -- gradient
-        Color3.fromHex("000000"), 
-        Color3.fromHex("000000")
-    ),
-    OnlyMobile = false,
-    Enabled = true,
-    Draggable = true,
-})
-
--- Services for custom icon
---[[local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+-- =========================
+-- IMPROVED ICON CONTROLLER (Cobalt-inspired)
+-- =========================
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
--- Root UI yang lebih tahan reset (prioritas: gethui/CoreGui; fallback ke PlayerGui)
+-- Helper functions
 local function getUiRoot()
-    return (gethui and gethui()) or game:GetService("CoreGui") or PlayerGui
+    return (gethui and gethui()) or game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
 end
 
--- Reuse kalau sudah ada (hindari duplikasi saat re-exec)
-local iconGui = getUiRoot():FindFirstChild("DevLogicIconGui") or Instance.new("ScreenGui")
-iconGui.Name = "DevLogicIconGui"
-iconGui.IgnoreGuiInset = true
-iconGui.ResetOnSpawn = false   -- <- kunci: jangan hilang saat respawn
-
--- (Opsional) proteksi GUI (beberapa executor support)
-pcall(function() if syn and syn.protect_gui then syn.protect_gui(iconGui) end end)
-
-iconGui.Parent = getUiRoot()
-
-
-local iconButton = Instance.new("ImageButton")
-iconButton.Name = "DevLogicOpenButton"
-iconButton.Size = UDim2.fromOffset(40, 40)
-iconButton.Position = UDim2.new(0, 10, 0.5, -20)
-iconButton.BackgroundTransparency = 1
-iconButton.Image = "rbxassetid://73063950477508"
-iconButton.Parent = iconGui
-iconButton.Visible = false -- Start hidden because window is open
-
--- Variable untuk track status
-local isWindowOpen = true
-local windowDestroyed = false
-
--- Cleanup function untuk icon
-local function cleanupIcon()
-    print("[GUI] Cleaning up custom icon...")
-    windowDestroyed = true
+local function clampToScreen(guiObj)
+    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+    local pos = guiObj.Position
+    local sizePx = guiObj.AbsoluteSize
     
-    if iconButton then
-        iconButton:Destroy()
-        iconButton = nil
-    end
-    
-    if iconGui then
-        iconGui:Destroy()
-        iconGui = nil
-    end
-    
-    print("[GUI] Icon cleanup completed")
+    local xOff = math.clamp(pos.X.Offset, 0, math.max(0, vp.X - sizePx.X))
+    local yOff = math.clamp(pos.Y.Offset, 36, math.max(36, vp.Y - sizePx.Y))
+    guiObj.Position = UDim2.new(0, xOff, 0, yOff)
 end
 
--- Make cleanup globally available
-_G.DevLogicIconCleanup = cleanupIcon
-
--- Fungsi toggle window
-local function toggleWindow()
-    if windowDestroyed then
-        print("Window already destroyed, cannot toggle")
-        return
+local function edgeSnap(guiObj, snapPx)
+    snapPx = snapPx or 15
+    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+    local pos = guiObj.Position
+    local sizePx = guiObj.AbsoluteSize
+    
+    local leftDist = pos.X.Offset
+    local rightDist = (vp.X - sizePx.X) - pos.X.Offset
+    local topDist = pos.Y.Offset - 36
+    local botDist = (vp.Y - sizePx.Y) - pos.Y.Offset
+    
+    local snapped = false
+    
+    if leftDist <= snapPx then
+        guiObj.Position = UDim2.new(0, 0, 0, pos.Y.Offset)
+        snapped = true
+    elseif rightDist <= snapPx then
+        guiObj.Position = UDim2.new(0, vp.X - sizePx.X, 0, pos.Y.Offset)
+        snapped = true
     end
     
-    print("Toggling window...") -- Debug
+    if topDist <= snapPx then
+        guiObj.Position = UDim2.new(guiObj.Position.X.Scale, guiObj.Position.X.Offset, 0, 36)
+        snapped = true
+    elseif botDist <= snapPx then
+        guiObj.Position = UDim2.new(guiObj.Position.X.Scale, guiObj.Position.X.Offset, 0, vp.Y - sizePx.Y)
+        snapped = true
+    end
     
-    if isWindowOpen then
-        local success = pcall(function() Window:Close() end)
-        if success then
-            iconButton.Visible = true
-            isWindowOpen = false
-            print("Window closed, icon shown")
-        else
-            print("Failed to close window")
+    return snapped
+end
+
+-- Improved IconController
+local IconController = {}
+IconController.__index = IconController
+
+function IconController.new(Window, opts)
+    local self = setmetatable({}, IconController)
+    self.Window = Window
+    self.Root = getUiRoot()
+    
+    -- Enhanced state tracking
+    self.State = {
+        windowOpen = true,
+        dragging = false,
+        startPos = nil,
+        startFramePos = nil,
+        totalDistance = 0,
+        startTime = 0,
+        dragConnection = nil,
+        endConnection = nil,
+    }
+    
+    self.Config = {
+        image = (opts and opts.image) or "rbxassetid://73063950477508",
+        size = (opts and opts.size) or Vector2.new(44, 44),
+        startPos = (opts and opts.startPos) or UDim2.new(0, 10, 0.5, -22),
+        clickThreshold = 4, -- distance
+        clickTimeLimit = 0.2, -- time click
+        snapDistance = 15,
+        
+        -- Animation configs
+        showTween = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        hideTween = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+    }
+    
+    -- Create ScreenGui
+    local screenGui = self.Root:FindFirstChild("DevLogicIconGui")
+    if not screenGui then
+        screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "DevLogicIconGui"
+        screenGui.IgnoreGuiInset = true
+        screenGui.ResetOnSpawn = false
+        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        
+        -- Protect GUI if possible
+        pcall(function()
+            if syn and syn.protect_gui then syn.protect_gui(screenGui) end
+        end)
+        
+        screenGui.Parent = self.Root
+    end
+    self.ScreenGui = screenGui
+    
+    -- Create Icon Button
+    self.IconButton = Instance.new("ImageButton")
+    self.IconButton.Name = "DevLogicIcon"
+    self.IconButton.BackgroundTransparency = 1
+    self.IconButton.Image = self.Config.image
+    self.IconButton.Size = UDim2.fromOffset(self.Config.size.X, self.Config.size.Y)
+    self.IconButton.ZIndex = 100
+    self.IconButton.Active = true
+    
+    -- Restore saved position or use default
+    local savedPos = rawget(_G, "DevLogicIconPos")
+    self.IconButton.Position = (typeof(savedPos) == "UDim2") and savedPos or self.Config.startPos
+    
+    -- Add corner radius for polish
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = self.IconButton
+    
+    self.IconButton.Parent = screenGui
+    
+    -- Hook window methods and setup drag
+    self:HookWindow()
+    self:SetupDrag()
+    
+    -- Initial state: hide icon if window is open
+    if self.State.windowOpen then
+        self.IconButton.Visible = false
+    end
+    
+    clampToScreen(self.IconButton)
+    
+    return self
+end
+
+function IconController:SetupDrag()
+    local State = self.State
+    local Config = self.Config
+    
+    -- Main input handler
+    self.IconButton.InputBegan:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and 
+           input.UserInputType ~= Enum.UserInputType.Touch then
+            return
         end
+        
+        -- Start drag state
+        State.dragging = true
+        State.startPos = input.Position
+        State.startFramePos = self.IconButton.Position
+        State.totalDistance = 0
+        State.startTime = tick()
+        
+        -- Clean up old connections
+        if State.endConnection then
+            State.endConnection:Disconnect()
+        end
+        
+        -- Handle input end
+        State.endConnection = input.Changed:Connect(function()
+            if input.UserInputState ~= Enum.UserInputState.End then
+                return
+            end
+            
+            self:EndDrag()
+        end)
+    end)
+    
+    -- Global input movement handler (Cobalt style)
+    if State.dragConnection then
+        State.dragConnection:Disconnect()
+    end
+    
+    State.dragConnection = UserInputService.InputChanged:Connect(function(input)
+        if not State.dragging then return end
+        
+        local isMoveInput = (input.UserInputType == Enum.UserInputType.MouseMovement) or 
+                           (input.UserInputType == Enum.UserInputType.Touch)
+        
+        if not isMoveInput then return end
+        
+        self:UpdateDrag(input)
+    end)
+end
+
+function IconController:UpdateDrag(input)
+    local State = self.State
+    local delta = input.Position - State.startPos
+    State.totalDistance = math.max(State.totalDistance, delta.Magnitude)
+    
+    -- Only move if we've exceeded click threshold (prevents false clicks)
+    if State.totalDistance > self.Config.clickThreshold then
+        self.IconButton.Position = UDim2.new(
+            State.startFramePos.X.Scale,
+            State.startFramePos.X.Offset + delta.X,
+            State.startFramePos.Y.Scale,
+            State.startFramePos.Y.Offset + delta.Y
+        )
+    end
+end
+
+function IconController:EndDrag()
+    local State = self.State
+    local Config = self.Config
+    
+    if not State.dragging then return end
+    
+    State.dragging = false
+    
+    -- Clean up connections
+    if State.endConnection then
+        State.endConnection:Disconnect()
+        State.endConnection = nil
+    end
+    
+    -- Determine if this was a click or drag
+    local totalTime = tick() - State.startTime
+    local isClick = (State.totalDistance <= Config.clickThreshold) and (totalTime <= Config.clickTimeLimit)
+    
+    if isClick then
+        -- Handle click - restore window
+        self:RestoreWindow()
     else
-        local success = pcall(function() Window:Open() end)
-        if success then
-            iconButton.Visible = false
-            isWindowOpen = true
-            print("Window opened, icon hidden")
-        else
-            print("Failed to open window")
-        end
-    end
-end
-
--- IMPROVED DRAG SYSTEM
-local function makeDraggable(gui)
-    local isDragging = false
-    local dragStart = nil
-    local startPos = nil
-    local dragDistance = 0
-    local hasDraggedFar = false
-    local dragStartTime = 0
-    
-    -- Konstanta untuk kontrol drag
-    local MIN_DRAG_DISTANCE = 8     
-    local TOGGLE_MAX_DISTANCE = 5   
-    local TOGGLE_MAX_TIME = 0.5     
-
-    local function updateInput(input)
-        if not isDragging or not dragStart then return end
+        -- Handle drag end - snap to edges and save position
+        clampToScreen(self.IconButton)
+        local snapped = edgeSnap(self.IconButton, Config.snapDistance)
         
-        local Delta = input.Position - dragStart
-        dragDistance = math.sqrt(Delta.X^2 + Delta.Y^2)
+        -- Save position
+        _G.DevLogicIconPos = self.IconButton.Position
         
-        if dragDistance > MIN_DRAG_DISTANCE then
-            hasDraggedFar = true
-        end
-        
-        if hasDraggedFar then
-            local Position = UDim2.new(
-                startPos.X.Scale, 
-                startPos.X.Offset + Delta.X, 
-                startPos.Y.Scale, 
-                startPos.Y.Offset + Delta.Y
+        -- Optional snap feedback
+        if snapped then
+            local snapTween = TweenService:Create(self.IconButton, 
+                TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                {Size = UDim2.fromOffset(Config.size.X + 4, Config.size.Y + 4)}
             )
-            gui.Position = Position
-        end
-    end
-
-    local inputChangedConnection = nil
-    local inputEndedConnection = nil
-
-    gui.InputBegan:Connect(function(input)
-        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-            isDragging = true
-            dragDistance = 0
-            hasDraggedFar = false
-            dragStart = input.Position
-            startPos = gui.Position
-            dragStartTime = tick()
-            
-            if inputChangedConnection then
-                inputChangedConnection:Disconnect()
-            end
-            if inputEndedConnection then
-                inputEndedConnection:Disconnect()
-            end
-            
-            inputEndedConnection = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    local dragEndTime = tick()
-                    local dragDuration = dragEndTime - dragStartTime
-                    
-                    isDragging = false
-                    
-                    local isClick = (dragDistance < TOGGLE_MAX_DISTANCE) and 
-                                  (dragDuration < TOGGLE_MAX_TIME) and 
-                                  (not hasDraggedFar)
-                    
-                    if isClick then
-                        print("Detected CLICK - Toggling window")
-                        wait(0.1)
-                        toggleWindow()
-                    else
-                        print("Detected DRAG - No toggle")
-                    end
-                    
-                    if inputChangedConnection then
-                        inputChangedConnection:Disconnect()
-                        inputChangedConnection = nil
-                    end
-                    if inputEndedConnection then
-                        inputEndedConnection:Disconnect()
-                        inputEndedConnection = nil
-                    end
-                end
+            snapTween:Play()
+            snapTween.Completed:Connect(function()
+                TweenService:Create(self.IconButton,
+                    TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {Size = UDim2.fromOffset(Config.size.X, Config.size.Y)}
+                ):Play()
             end)
         end
-    end)
-
-    gui.InputChanged:Connect(function(input)
-        if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            if isDragging then
-                updateInput(input)
-            end
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-            if isDragging then
-                isDragging = false
-                
-                if inputChangedConnection then
-                    inputChangedConnection:Disconnect()
-                    inputChangedConnection = nil
-                end
-                if inputEndedConnection then
-                    inputEndedConnection:Disconnect()
-                    inputEndedConnection = nil
-                end
-            end
-        end
-    end)
+    end
 end
 
--- Apply drag system ke icon
-makeDraggable(iconButton)
-
--- Monitor WindUI visibility
-local lastVisible = nil
-RunService.Heartbeat:Connect(function()
-    if windowDestroyed then return end
+function IconController:RestoreWindow()
+    if not self.Window then return end
     
-    local windUIFrame = PlayerGui:FindFirstChild("WindUI")
-    if windUIFrame then
-        local mainFrame = windUIFrame:FindFirstChild("Frame") or windUIFrame:FindFirstChild("Main")
-        if mainFrame and mainFrame.Visible ~= lastVisible then
-            lastVisible = mainFrame.Visible
-            if mainFrame.Visible then
-                iconButton.Visible = false
-                isWindowOpen = true
+    self.State.windowOpen = true
+    
+    -- Animate icon disappearing
+    self.IconButton.Active = false
+    local hideTween = TweenService:Create(self.IconButton, self.Config.hideTween, {
+        ImageTransparency = 1,
+        Size = UDim2.fromOffset(self.Config.size.X * 0.8, self.Config.size.Y * 0.8)
+    })
+    
+    hideTween:Play()
+    hideTween.Completed:Connect(function()
+        self.IconButton.Visible = false
+        self.IconButton.ImageTransparency = 0
+        self.IconButton.Size = UDim2.fromOffset(self.Config.size.X, self.Config.size.Y)
+        self.IconButton.Active = true
+    end)
+    
+    -- Restore window
+    if self.Window.Open then
+        pcall(function() self.Window:Open() end)
+    end
+end
+
+function IconController:MinimizeToIcon()
+    if not self.IconButton then return end
+    
+    self.State.windowOpen = false
+    
+    -- Show and animate icon appearing
+    self.IconButton.Visible = true
+    self.IconButton.ImageTransparency = 1
+    self.IconButton.Size = UDim2.fromOffset(self.Config.size.X * 1.2, self.Config.size.Y * 1.2)
+    
+    local showTween = TweenService:Create(self.IconButton, self.Config.showTween, {
+        ImageTransparency = 0,
+        Size = UDim2.fromOffset(self.Config.size.X, self.Config.size.Y)
+    })
+    showTween:Play()
+    
+    -- Ensure it's positioned correctly
+    clampToScreen(self.IconButton)
+end
+
+function IconController:HookWindow()
+    local Window = self.Window
+    if not Window then return end
+    
+    -- Hook Close method
+    if Window.Close and not self._hookedClose then
+        local originalClose = Window.Close
+        self._hookedClose = true
+        
+        Window.Close = function(w, ...)
+            local result = originalClose(w, ...)
+            self:MinimizeToIcon()
+            return result
+        end
+    end
+    
+    -- Hook Open method  
+    if Window.Open and not self._hookedOpen then
+        local originalOpen = Window.Open
+        self._hookedOpen = true
+        
+        Window.Open = function(w, ...)
+            local result = originalOpen(w, ...)
+            if self.IconButton then
+                self.IconButton.Visible = false
+            end
+            self.State.windowOpen = true
+            return result
+        end
+    end
+    
+    -- Hook Toggle method
+    if Window.Toggle and not self._hookedToggle then
+        local originalToggle = Window.Toggle
+        self._hookedToggle = true
+        
+        Window.Toggle = function(w, ...)
+            local result = originalToggle(w, ...)
+            -- Determine new state and act accordingly
+            task.wait(0.1) -- Small delay to let toggle complete
+            
+            if self.State.windowOpen then
+                self:MinimizeToIcon()
             else
-                iconButton.Visible = true
-                isWindowOpen = false
+                self:RestoreWindow()
             end
+            return result
         end
     end
-end)
-
--- Override Window methods
-if Window.Toggle then
-    local originalToggle = Window.Toggle
-    Window.Toggle = function(self)
-        local result = originalToggle(self)
-        if not windowDestroyed and iconButton then
-            iconButton.Visible = not iconButton.Visible
-            isWindowOpen = not isWindowOpen
-        end
-        return result
+    
+    -- Hook destroy if available
+    if Window.OnDestroy and typeof(Window.OnDestroy) == "function" then
+        Window:OnDestroy(function()
+            self:Destroy()
+        end)
     end
 end
 
-if Window.Close then
-    local originalClose = Window.Close
-    Window.Close = function(self)
-        local result = originalClose(self)
-        if not windowDestroyed and iconButton then
-            iconButton.Visible = true
-            isWindowOpen = false
-        end
-        return result
+function IconController:Destroy()
+    -- Clean up connections
+    if self.State.dragConnection then
+        self.State.dragConnection:Disconnect()
+    end
+    if self.State.endConnection then
+        self.State.endConnection:Disconnect()
+    end
+    
+    -- Clean up GUI
+    if self.IconButton and self.IconButton.Parent then
+        self.IconButton:Destroy()
+    end
+    
+    if self.ScreenGui and self.ScreenGui.Parent and #self.ScreenGui:GetChildren() == 0 then
+        self.ScreenGui:Destroy()
+    end
+    
+    -- Clear state
+    self.State.dragConnection = nil
+    self.State.endConnection = nil
+end
+-- Disable WindUI default open button
+Window:EditOpenButton({ Enabled = false })
+
+-- Create improved icon controller
+local DevLogicIcon = IconController.new(Window, {
+    image = "rbxassetid://87777871973025",
+    size = Vector2.new(44, 44),
+    startPos = UDim2.new(0, 10, 0.5, -22),
+})
+
+-- Store cleanup function globally for the old system
+_G.DevLogicIconCleanup = function()
+    if DevLogicIcon then
+        print("[IconController] Cleaning up via global cleanup")
+        DevLogicIcon:Destroy()
+        DevLogicIcon = nil
     end
 end
 
-if Window.Open then
-    local originalOpen = Window.Open
-    Window.Open = function(self)
-        local result = originalOpen(self)
-        if not windowDestroyed and iconButton then
-            iconButton.Visible = false
-            isWindowOpen = true
-        end
-        return result
-    end
-end]]---
+-- Optional: Start minimized
+-- DevLogicIcon:MinimizeToIcon()
 
--- END CUSTOM ICON INTEGRATION
+-- =========================
+-- END CUSTOM ICON INTEGRATION v2
+-- =========================
 
 Window:Tag({
     Title = "v0.0.0",
@@ -405,44 +594,19 @@ Window:Tag({
     Color = Color3.fromHex("#000000")
 })
 
--- === Topbar Changelog (simple) ===
+--- === CHANGELOG & DISCORD LINK === ---
 local CHANGELOG = table.concat({
-    "[+] Auto Fishing",
-    "[+] Auto Teleport Island",
-    "[+] Auto Buy Weather",
-    "[+] Auto Sell Fish",
-    "[+] Webhook",
+    "[+] Cancel Fishing",
+    "[/] Auto Fishing (Now much faster)",
+    "[/] Auto Teleport to Event (Fixed detection)",
+    "[/] Webhook Embed",
+    "[/] Small fix for GUI",
+    "If you find bugs or have suggestions, let us know."
 }, "\n")
 local DISCORD = table.concat({
     "https://discord.gg/3AzvRJFT3M",
 }, "\n")
     
-local function ShowChangelog()
-    Window:Dialog({
-        Title   = "Changelog",
-        Content = CHANGELOG,
-        Buttons = {
-            {
-                Title   = "Discord",
-                Icon    = "copy",
-                Variant = "Secondary",
-                Callback = function()
-                    if typeof(setclipboard) == "function" then
-                        setclipboard(DISCORD)
-                        WindUI:Notify({ Title = "Copied", Content = "Changelog copied", Icon = "check", Duration = 2 })
-                    else
-                        WindUI:Notify({ Title = "Info", Content = "Clipboard not available", Icon = "info", Duration = 3 })
-                    end
-                end
-            },
-            { Title = "Close", Variant = "Primary" }
-        }
-    })
-end
-
--- name, icon, callback, order
-Window:CreateTopbarButton("changelog", "newspaper", ShowChangelog, 995)
-
 --========== TABS ==========
 local TabHome            = Window:Tab({ Title = "Home",           Icon = "house" })
 local TabMain            = Window:Tab({ Title = "Main",           Icon = "gamepad" })
@@ -453,65 +617,31 @@ local TabTeleport        = Window:Tab({ Title = "Teleport",       Icon = "map" }
 local TabMisc            = Window:Tab({ Title = "Misc",           Icon = "cog" })
 
 --- === Home === ---
-local DLsec = TabHome:Section({ 
+local info_sec = TabHome:Section({ 
     Title = "Information",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
+    Opened = true
 })
 
-local AboutUs = TabHome:Paragraph({
-    Title = ".devlogic",
-    Desc = "If you found bugs or have suggestion, let us know.",
-    Color = "White",
-    ImageSize = 30,})
-
-local DiscordBtn = TabHome:Button({
-    Title = "Discord",
-    Icon  = "message-circle",
-    Callback = function()
-        if setclipboard then
-            setclipboard("https://discord.gg/3AzvRJFT3M") -- ganti invite kamu
-        end
-    end
-})
-
-local othersec = TabHome:Section({ 
-    Title = "Others",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
---- Anti AFK
-local antiafkFeature = nil
-
-local antiafk_tgl = TabHome:Toggle({
-    Title = "Anti AFK",
-    Default = false,
-    Callback = function(state) 
-   if state then
-      if not antiafkFeature then
-        antiafkFeature = FeatureManager:LoadFeature("AntiAfk")
-      end
-      if antiafkFeature and antiafkFeature.Start then
-        antiafkFeature:Start()
-      else
-        antiafk_tgl:Set(false)
-        WindUI:Notify({ Title="Failed", Content="Could not start AntiAfk", Icon="x", Duration=3 })
-      end
-    else
-      if antiafkFeature and antiafkFeature.Stop then antiafkFeature:Stop() end
-    end
-  end
-})
-
---- Boost FPS
-local boostfps_btn = TabHome:Button({
-    Title = "Boost FPS",
-    Desc = "Test Button",
+local info_para = TabHome:Paragraph({
+    Title = "Changelog v0.0.5",
+    Desc = CHANGELOG,
     Locked = false,
-    Callback = function()
-        print("clicked")
-    end
+    Buttons = {
+        {
+            Icon = "copy",
+            Title = "Discord",
+            Callback = function() 
+            if typeof(setclipboard) == "function" then
+                        setclipboard(DISCORD)
+                        WindUI:Notify({ Title = "Copied", Content = "Disord link copied!", Icon = "check", Duration = 2 })
+                    else
+                        WindUI:Notify({ Title = "Info", Content = "Clipboard not available", Icon = "info", Duration = 3 })
+                    end
+                end
+        }
+    }
 })
 
 --- === Main === ---
@@ -525,10 +655,10 @@ local autofish_sec = TabMain:Section({
 local autoFishFeature = nil
 local currentFishingMode = "Perfect"
 
-local autofishmode_dd = TabMain:Dropdown({
+local autofishmode_dd = autofish_sec:Dropdown({
     Title = "Fishing Mode",
-    Values = { "Perfect", "OK", "Mid" },
-    Value = "Perfect",
+    Values = { "Fast", "Slow" },
+    Value = "Fast",
     Callback = function(option) 
         currentFishingMode = option
         print("[GUI] Fishing mode changed to:", option)
@@ -540,7 +670,7 @@ local autofishmode_dd = TabMain:Dropdown({
     end
 })
     
-local autofish_tgl = TabMain:Toggle({
+local autofish_tgl = autofish_sec:Toggle({
     Title = "Auto Fishing",
     Desc = "Automatically fishing with selected mode",
     Default = false,
@@ -578,12 +708,11 @@ local autofish_tgl = TabMain:Toggle({
 })
 
 --- Cancel Fishing/Fix Stuck
-
 local CancelFishingEvent = game:GetService("ReplicatedStorage")
     .Packages._Index["sleitnick_net@0.2.0"]
     .net["RF/CancelFishingInputs"]
 
-local cancelautofish_btn = TabMain:Button({
+local cancelautofish_btn = autofish_sec:Button({
     Title = "Cancel Fishing",
     Desc = "Fix Stuck when Fishing",
     Locked = false,
@@ -625,7 +754,7 @@ for _, event in ipairs(AVAIL_EVENT) do
     table.insert(AVAIL_EVENT_OPTIONS, event)
 end
 
-local eventtele_ddm = TabMain:Dropdown({
+local eventtele_ddm = eventtele_sec:Dropdown({
     Title = "Select Event",
     Values = AVAIL_EVENT_OPTIONS,
     Value = {},
@@ -639,7 +768,7 @@ local eventtele_ddm = TabMain:Dropdown({
     end
 })
 
-local eventtele_tgl = TabMain:Toggle({
+local eventtele_tgl = eventtele_sec:Toggle({
     Title = "Auto Event Teleport",
     Desc  = "Auto Teleport to Event when available",
     Default = false,
@@ -678,7 +807,7 @@ local autoFavFishFeature = nil
 local selectedTiers = {}
 
 -- Dropdown: start dengan tier default, akan di-reload saat feature dimuat
-local favfish_ddm = TabBackpack:Dropdown({
+local favfish_ddm = favfish_sec:Dropdown({
     Title     = "Select Rarity",
     Values    = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common" }, -- default fallback
     Value     = {},
@@ -692,7 +821,7 @@ local favfish_ddm = TabBackpack:Dropdown({
     end
 })
 
-local favfish_tgl = TabBackpack:Toggle({
+local favfish_tgl = favfish_sec:Toggle({
     Title    = "Auto Favorite Fish",
     Desc     = "Automatically favorite fish with selected rarities",
     Default  = false,
@@ -774,7 +903,7 @@ local sellfishFeature        = nil
 local currentSellThreshold   = "Legendary"
 local currentSellLimit       = 0
 
-local sellfish_dd = TabBackpack:Dropdown({
+local sellfish_dd = sellfish_sec:Dropdown({
     Title = "Select Rarity",
     Values = { "Secret", "Mythic", "Legendary" },
     Value = "Legendary",
@@ -786,7 +915,7 @@ local sellfish_dd = TabBackpack:Dropdown({
   end
 })
 
-local sellfish_in = TabBackpack:Input({
+local sellfish_in = sellfish_sec:Input({
     Title = "Sell Delay",
     Placeholder = "e.g 60 (second)",
     Desc = "Input delay in seconds.",
@@ -801,7 +930,7 @@ local sellfish_in = TabBackpack:Input({
   end
 })
 
-local sellfish_tgl = TabBackpack:Toggle({
+local sellfish_tgl = sellfish_sec:Toggle({
     Title = "Auto Sell",
     Desc = "",
     Default = false,
@@ -852,7 +981,7 @@ local autoEnchantFeature = nil
 local selectedEnchants   = {}
 local enchantName = getEnchantName()
 
-local enchant_ddm = TabAutomation:Dropdown({
+local enchant_ddm = autoenchantrod_sec:Dropdown({
     Title     = "Select Enchants",
     Values    = enchantName,       -- akan diisi saat modul diload
     Value     = {},
@@ -868,7 +997,7 @@ local enchant_ddm = TabAutomation:Dropdown({
     end
 })
 
-local enchant_tgl = TabAutomation:Toggle({
+local enchant_tgl = autoenchantrod_sec:Toggle({
     Title   = "Auto Enchant Rod",
     Default = false,
     Callback = function(state)
@@ -934,7 +1063,7 @@ local autogift_sec = TabAutomation:Section({
     TextSize = 17, -- Default Size
 })
 
-local autogiftplayer_dd = TabAutomation:Dropdown({
+local autogiftplayer_dd = autogift_sec:Dropdown({
     Title = "Select Player",
     Values = { "Category A", "Category B", "Category C" },
     Value = "Category A",
@@ -943,16 +1072,25 @@ local autogiftplayer_dd = TabAutomation:Dropdown({
     end
 })
 
-local autogift_tgl = TabAutomation:Toggle({
+local autogift_tgl = autogift_sec:Toggle({
     Title = "Auto Gift Fish",
-    Desc  = "Auto Gift held Fish/Item",
+    Desc  = "",
     Default = false,
     Callback = function(state) 
         print("Toggle Activated" .. tostring(state))
     end
 })
 
-local autogiftacc_tgl = TabAutomation:Toggle({
+local autogiftrefresh_btn = autogift_sec:Button({
+    Title = "Refresh Player List",
+    Desc = "",
+    Locked = false,
+    Callback = function()
+        print("clicked")
+    end
+})
+
+local autogiftacc_tgl = autogift_sec:Toggle({
     Title = "Auto Accept Gift",
     Desc  = "",
     Default = false,
@@ -972,7 +1110,7 @@ local shoprod_sec = TabShop:Section({
 local autobuyrodFeature = nil
 local selectedRodsSet = {} -- State untuk menyimpan pilihan user
 
-local shoprod_ddm = TabShop:Dropdown({
+local shoprod_ddm = shoprod_sec:Dropdown({
     Title = "Select Rod",
     Values = {
         "Luck Rod",
@@ -1004,7 +1142,7 @@ local shoprod_ddm = TabShop:Dropdown({
     end
 })
 
-local shoprod_btn = TabShop:Button({
+local shoprod_btn = shoprod_sec:Button({
     Title = "Buy Rod",
     Desc = "Purchase selected rods (one-time buy)",
     Locked = false,
@@ -1162,7 +1300,7 @@ local autobuybaitFeature = nil
 local selectedBaitsSet = {}
 local baitName = getBaitNames()
 
-local shopbait_ddm = TabShop:Dropdown({
+local shopbait_ddm = shopbait_sec:Dropdown({
     Title = "Select Bait",
     Values = baitName,
     Value = {}, -- Start with empty selection
@@ -1181,7 +1319,7 @@ local shopbait_ddm = TabShop:Dropdown({
     end
 })
 
-local shopbait_btn = TabShop:Button({
+local shopbait_btn = shopbait_sec:Button({
     Title = "Buy Bait",
     Desc = "Purchase selected baits (one-time buy)",
     Locked = false,
@@ -1342,7 +1480,7 @@ local weatherName = getWeatherNames()
 
 
 -- Multi dropdown (Values diisi setelah modul diload)
-local shopweather_ddm = TabShop:Dropdown({
+local shopweather_ddm = shopweather_sec:Dropdown({
     Title     = "Select Weather",
     Desc      = "",
     Values    = weatherName,
@@ -1363,7 +1501,7 @@ local shopweather_ddm = TabShop:Dropdown({
     end
 })
 
-local shopweather_tgl = TabShop:Toggle({
+local shopweather_tgl = shopweather_sec:Toggle({
     Title   = "Auto Buy Weather",
     Default = false,
     Callback = function(state)
@@ -1425,7 +1563,7 @@ local teleisland_sec = TabTeleport:Section({
 local autoTeleIslandFeature = nil
 local currentIsland = "Fisherman Island"
 
-local teleisland_dd = TabTeleport:Dropdown({
+local teleisland_dd = teleisland_sec:Dropdown({
     Title = "Select Island",
     Values = {
         "Fisherman Island",
@@ -1450,7 +1588,7 @@ local teleisland_dd = TabTeleport:Dropdown({
 })
 
 
-local teleisland_btn = TabTeleport:Button({
+local teleisland_btn = teleisland_sec:Button({
     Title = "Teleport To Island",
     Desc  = "",
     Locked = false,
@@ -1481,14 +1619,14 @@ local teleisland_btn = TabTeleport:Button({
     end
 })
 
-
+--- Teleport To Player
 local teleplayer_sec = TabTeleport:Section({ 
     Title = "Players",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
 
-local teleplayer_dd = TabTeleport:Dropdown({
+local teleplayer_dd = teleplayer_sec:Dropdown({
     Title = "Select Player",
     Values = { "Category A", "Category B", "Category C" },
     Value = "Category A",
@@ -1497,7 +1635,7 @@ local teleplayer_dd = TabTeleport:Dropdown({
     end
 })
 
-local teleplayer_btn = TabTeleport:Button({
+local teleplayer_btn = teleplayer_sec:Button({
     Title = "Teleport To Player",
     Desc = "",
     Locked = false,
@@ -1506,27 +1644,8 @@ local teleplayer_btn = TabTeleport:Button({
     end
 })
 
---- === Misc === ---
---- Server
-local servutils_sec = TabMisc:Section({ 
-    Title = "Join Server",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
-local servjoin_in = TabMisc:Input({
-    Title = "Job Id",
-    Desc = "Input Server Job Id",
-    Value = "",
-    Placeholder = "000-000-000",
-    Type = "Input", 
-    Callback = function(input) 
-        print("delay entered: " .. input)
-    end
-})
-
-local servjoin_btn = TabMisc:Button({
-    Title = "Join Server",
+local teleplayerrefresh_btn = teleplayer_sec:Button({
+    Title = "Refresh Player List",
     Desc = "",
     Locked = false,
     Callback = function()
@@ -1534,41 +1653,7 @@ local servjoin_btn = TabMisc:Button({
     end
 })
 
-local servcopy_btn = TabMisc:Button({
-    Title = "Copy Server ID",
-    Desc = "Copy Current Server Job ID",
-    Locked = false,
-    Callback = function()
-        print("clicked")
-    end
-})
-
---- Server Hop
-local servhop_sec = TabMisc:Section({ 
-    Title = "Hop Server",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
-local servhop_dd = TabMisc:Dropdown({
-    Title = "Select Server Luck",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = "Category A",
-    Callback = function(option) 
-        print("Category selected: " .. option) 
-    end
-})
-
-local servhop_tgl = TabMisc:Toggle({
-    Title = "Auto Hop Server",
-    Desc  = "Auto Hop until found desired Server",
-    Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
-    end
-})
-
-
+--- === Misc === ---
 --- Webhook
 local webhookfish_sec = TabMisc:Section({ 
     Title = "Webhook",
@@ -1592,7 +1677,7 @@ for _, tier in ipairs(FISH_TIERS) do
     table.insert(WEBHOOK_FISH_OPTIONS, tier)
 end
 
-local webhookfish_in = TabMisc:Input({
+local webhookfish_in = webhookfish_sec:Input({
     Title = "Discord Webhook URL",
     Desc = "Paste your Discord webhook URL here",
     Value = "",
@@ -1609,7 +1694,7 @@ local webhookfish_in = TabMisc:Input({
     end
 })
 
-local webhookfish_ddm = TabMisc:Dropdown({
+local webhookfish_ddm = webhookfish_sec:Dropdown({
     Title = "Select Rarity",
     Desc = "Choose which fish types/rarities to send to webhook",
     Values = WEBHOOK_FISH_OPTIONS,
@@ -1632,7 +1717,7 @@ local webhookfish_ddm = TabMisc:Dropdown({
 })
 
 
-local webhookfish_tgl = TabMisc:Toggle({
+local webhookfish_tgl = webhookfish_sec:Toggle({
     Title = "Enable Fish Webhook",
     Desc = "Automatically send notifications when catching selected fish types",
     Default = false,
@@ -1718,8 +1803,8 @@ local webhookfish_tgl = TabMisc:Toggle({
     end
 })
 
---- Vuln
-local vuln_sec = TabMisc:Section({ 
+--- Other
+local others_sec = TabMisc:Section({ 
     Title = "Vuln",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
@@ -1790,6 +1875,41 @@ local eqfishradar_tgl = TabMisc:Toggle({
 end
 })
 
+--- Anti AFK
+local antiafkFeature = nil
+
+local antiafk_tgl = TabMisc:Toggle({
+    Title = "Anti AFK",
+    Default = true,
+    Callback = function(state) 
+   if state then
+      if not antiafkFeature then
+        antiafkFeature = FeatureManager:LoadFeature("AntiAfk")
+      end
+      if antiafkFeature and antiafkFeature.Start then
+        antiafkFeature:Start()
+      else
+        antiafk_tgl:Set(false)
+        WindUI:Notify({ Title="Failed", Content="Could not start AntiAfk", Icon="x", Duration=3 })
+      end
+    else
+      if antiafkFeature and antiafkFeature.Stop then antiafkFeature:Stop() end
+    end
+  end
+})
+
+--- Boost FPS
+local boostfps_btn = TabMisc:Button({
+    Title = "Boost FPS",
+    Desc = "Test Button",
+    Locked = false,
+    Callback = function()
+        print("clicked")
+    end
+})
+
+Window:SelectTab(1)
+
 --========== LIFECYCLE (tanpa cleanup integrasi) ==========
 if type(Window.OnClose) == "function" then
     Window:OnClose(function()
@@ -1810,14 +1930,18 @@ if type(Window.OnDestroy) == "function" then
         end
         FeatureManager.LoadedFeatures = {}
         
-        -- Cleanup custom icon
+        -- Cleanup custom icon - DIPERBAIKI
         if _G.DevLogicIconCleanup then
             pcall(_G.DevLogicIconCleanup)
             _G.DevLogicIconCleanup = nil
         end
+        
+        -- Cleanup DevLogicIcon secara langsung juga (double safety)
+        if DevLogicIcon then
+            pcall(function() DevLogicIcon:Destroy() end)
+            DevLogicIcon = nil
+        end
     end)
 end
-
-
 
 
