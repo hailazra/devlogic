@@ -600,7 +600,7 @@ end
 -- =========================
 
 Window:Tag({
-    Title = "v0.0.4",
+    Title = "v0.0.5",
     Color = Color3.fromHex("#000000")
 })
 
@@ -611,11 +611,8 @@ Window:Tag({
 
 --- === CHANGELOG & DISCORD LINK === ---
 local CHANGELOG = table.concat({
-    "[+] Cancel Fishing",
-    "[/] Auto Fishing (Now much faster)",
-    "[/] Auto Teleport to Event (Fixed detection)",
-    "[/] Webhook Embed",
-    "[/] Small fix for GUI",
+    "[+] Added Teleport to Player",
+    "[+] Added Boost FPS",
     "If you find bugs or have suggestions, let us know."
 }, "\n")
 local DISCORD = table.concat({
