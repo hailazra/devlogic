@@ -1040,7 +1040,7 @@ local enchant_tgl = autoenchantrod_sec:Toggle({
                 })
                 WindUI:Notify({
                     Title    = "Tip",
-                    Content  = "Equip an Enchant Stone once so the script captures the UUID.",
+                    Content  = "Place Enhance Stone at slot 3",
                     Icon     = "info",
                     Duration = 4
                 })
