@@ -104,6 +104,66 @@ function FeatureManager:GetFeature(name)
     return self.LoadedFeatures[name]
 end
 
+-- ===========================
+-- PRELOAD ALL FEATURES
+-- ===========================
+local function preloadAllFeatures()
+    print("[FeatureManager] Starting preload all features...")
+    
+    -- Urutan loading (critical features first)
+    local loadOrder = {
+        "AntiAfk",           -- Utility first
+        "AutoFish",          -- Core features
+        "AutoSellFish",
+        "AutoTeleportIsland",
+        "AutoTeleportEvent",
+        "AutoEnchantRod",
+        "AutoFavoriteFish",
+        "FishWebhook",       -- Notification features
+        "AutoBuyWeather",    -- Shop features
+        "AutoBuyBait",
+        "AutoBuyRod",
+        "AutoGearOxyRadar"   -- Advanced features
+    }
+    
+    local loadedCount = 0
+    local totalFeatures = #loadOrder
+    
+    for _, featureName in ipairs(loadOrder) do
+        local success = pcall(function()
+            local feature = FeatureManager:LoadFeature(featureName)
+            if feature then
+                loadedCount = loadedCount + 1
+                print(string.format("[FeatureManager] ✓ %s loaded (%d/%d)", 
+                    featureName, loadedCount, totalFeatures))
+            else
+                warn(string.format("[FeatureManager] ✗ Failed to load %s", featureName))
+            end
+        end)
+        
+        if not success then
+            warn(string.format("[FeatureManager] ✗ Error loading %s", featureName))
+        end
+        
+        -- Small delay untuk prevent overwhelming
+        task.wait(0.1)
+    end
+    
+    print(string.format("[FeatureManager] Preloading completed: %d/%d features loaded", 
+        loadedCount, totalFeatures))
+    
+    -- Optional: Show completion notification
+    WindUI:Notify({
+        Title = "Ready",
+        Content = string.format("%d features loaded", loadedCount),
+        Icon = "check",
+        Duration = 2
+    })
+end
+
+-- Execute preloading immediately
+task.spawn(preloadAllFeatures)
+
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
     Title         = ".devlogic",
@@ -618,7 +678,7 @@ local antiafk_tgl = TabHome:Toggle({
     Callback = function(state) 
    if state then
       if not antiafkFeature then
-        antiafkFeature = FeatureManager:LoadFeature("AntiAfk")
+        antiafkFeature = FeatureManager:GetFeature("AntiAfk")
       end
       if antiafkFeature and antiafkFeature.Start then
         antiafkFeature:Start()
@@ -678,7 +738,7 @@ local autofish_tgl = TabMain:Toggle({
         if state then
             -- Load feature if not already loaded
             if not autoFishFeature then
-                autoFishFeature = FeatureManager:LoadFeature("AutoFish", {
+                autoFishFeature = FeatureManager:GetFeature("AutoFish", {
                     modeDropdown = autofishmode_dd,
                     toggle = autofish_tgl
                 })
@@ -1557,7 +1617,7 @@ local teleisland_btn = TabTeleport:Button({
     Callback = function()
         -- Muat modul jika belum pernah dimuat
         if not autoTeleIslandFeature then
-            autoTeleIslandFeature = FeatureManager:LoadFeature("AutoTeleportIsland", {
+            autoTeleIslandFeature = FeatureManager:GetFeature("AutoTeleportIsland", {
                 dropdown = teleisland_dd,
                 button   = teleisland_btn
             })
@@ -1871,7 +1931,7 @@ local eqfishradar_tgl = TabMisc:Toggle({
   radarOn = state
   if state then
     if not autoGearFeature then
-      autoGearFeature = FeatureManager:LoadFeature("AutoGearOxyRadar")
+      autoGearFeature = FeatureManager:GetFeature("AutoGearOxyRadar")
       if autoGearFeature and autoGearFeature.Start then
         autoGearFeature:Start()
       end
@@ -1923,6 +1983,7 @@ if type(Window.OnDestroy) == "function" then
         end
     end)
 end
+
 
 
 
