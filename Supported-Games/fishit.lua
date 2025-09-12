@@ -165,21 +165,22 @@ end
 task.spawn(preloadAllFeatures)
 
 WindUI:AddTheme({
-    Name = "AtresBlue",
-    Accent = "#1e3a8a",         -- Deep black background
-    Dialog = "#004293",         -- Match dialog to background
-    Outline = "#93c5fd",        -- Bright blue outline (Sonic blue)
-    Text = "#bfdbfe",           -- Clean white text
-    Placeholder = "#60a5fa",    -- Soft gray placeholder
-    Background = "#004293",     -- Main background
-    Button = "#2563eb",         -- Slightly lighter button
-    Icon = "#3b82f6",           -- Blue icons to match outline
+    Name = "StarlessMono",
+    Accent = "#EDEFFB",      -- starlight (off-white lembut)
+    Dialog = "#11151B",      -- panel/modal
+    Outline = "#2A313B",     -- garis/border
+    Text = "#E7EBF3",        -- teks utama (bukan putih murni)
+    Placeholder = "#9AA3AE", -- hint/muted
+    Background = "#0A0D12FF",-- hampir hitam (OLED friendly)
+    Button = "#1A202C",      -- tombol idle gelap
+    Icon = "#F2F6FF",        -- ikon lebih terang (glow feel)
 })
+
 
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
-    Title         = "AtresHub",
-    Icon          = "rbxassetid://87777871973025",
+    Title         = "StarlessMono",
+    Icon          = "rbxassetid://123156553209294",
     Author        = "Fish It",
     Folder        = "AtresHub",
     Size          = UDim2.fromOffset(250, 250),
@@ -575,7 +576,7 @@ Window:EditOpenButton({ Enabled = false })
 
 -- Create improved icon controller
 local DevLogicIcon = IconController.new(Window, {
-    image = "rbxassetid://87777871973025",
+    image = "rbxassetid://123156553209294",
     size = Vector2.new(44, 44),
     startPos = UDim2.new(0, 10, 0.5, -22),
 })
