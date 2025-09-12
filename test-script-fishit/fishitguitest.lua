@@ -47,7 +47,7 @@ local FeatureManager = {}
 FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
-    AutoFish           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
+    AutoFish           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/test-script-fishit/autofishv2.lua", 
     AutoSellFish       = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua",
     AutoTeleportIsland = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua",
     FishWebhook        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/fishwebhook.lua",
