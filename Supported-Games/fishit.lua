@@ -58,7 +58,8 @@ local FEATURE_URLS = {
     AutoGearOxyRadar   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autogearoxyradar.lua",
     AntiAfk            = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/antiafk.lua", 
     AutoEnchantRod     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoenchantrodv1.lua",
-    AutoFavoriteFish   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofavoritefish.lua" 
+    AutoFavoriteFish   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofavoritefish.lua",
+    AutoTeleportPlayer = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportplayer.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -111,6 +112,7 @@ local function preloadAllFeatures()
         "AutoFish",          -- Core features
         "AutoSellFish",
         "AutoTeleportIsland",
+        "AutoTeleportPlayer",
         "AutoTeleportEvent",
         "AutoEnchantRod",
         "AutoFavoriteFish",
@@ -1640,12 +1642,31 @@ local teleplayer_sec = TabTeleport:Section({
     TextSize = 17, -- Default Size
 })
 
+local function listPlayers(excludeSelf)
+    local me = LocalPlayer and LocalPlayer.Name
+    local names = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if (not excludeSelf) or (me and p.Name ~= me) then
+            table.insert(names, p.Name)
+        end
+    end
+    table.sort(names, function(a,b) return a:lower() < b:lower() end)
+    return names
+end
+
+local teleplayerFeature = nil
+local currentPlayerName = nil
+
 local teleplayer_dd = teleplayer_sec:Dropdown({
     Title = "Select Player",
     Values = { "Category A", "Category B", "Category C" },
     Value = "Category A",
     Callback = function(option) 
-        print("Category selected: " .. option) 
+        currentPlayerName = name
+        -- sinkron ke feature kalau sudah diload
+        if teleplayerFeature and teleplayerFeature.SetTarget then
+            teleplayerFeature:SetTarget(name)
+        end
     end
 })
 
@@ -1654,7 +1675,32 @@ local teleplayer_btn = teleplayer_sec:Button({
     Desc = "",
     Locked = false,
     Callback = function()
-        print("clicked")
+         if not currentPlayerName or currentPlayerName == "" then
+            WindUI:Notify({ Title = "Teleport Failed", Content = "Pilih player dulu dari dropdown", Icon = "x", Duration = 3 })
+            return
+        end
+
+        -- Lazy-load fitur sekali, konsisten dengan arsitektur FeatureManager
+        if not teleplayerFeature then
+            teleplayerFeature = FeatureManager:LoadFeature("AutoTeleportPlayer", {
+                dropdown       = teleplayer_dd,
+                refreshButton  = teleplayerrefresh_btn,
+                teleportButton = teleplayer_btn
+            })
+        end
+
+        if not teleplayerFeature then
+            WindUI:Notify({ Title = "Error", Content = "AutoTeleportPlayer gagal dimuat", Icon = "x", Duration = 3 })
+            return
+        end
+
+        -- Set target lalu eksekusi teleport
+        teleplayerFeature:SetTarget(currentPlayerName)
+        local ok = teleplayerFeature:Teleport()
+        if not ok then
+            -- Modul sudah punya notifikasi internal; ini fallback aja
+            WindUI:Notify({ Title = "Teleport Failed", Content = "Gagal teleport (cek anti-cheat/character target)", Icon = "x", Duration = 3 })
+        end
     end
 })
 
@@ -1663,7 +1709,13 @@ local teleplayerrefresh_btn = teleplayer_sec:Button({
     Desc = "",
     Locked = false,
     Callback = function()
-        print("clicked")
+       local names = listPlayers(true)
+        if teleplayer_dd.Reload then
+            teleplayer_dd:Reload(names)
+        elseif teleplayer_dd.SetOptions then
+            teleplayer_dd:SetOptions(names)
+        end
+        WindUI:Notify({ Title = "Players", Content = ("Online: %d"):format(#names), Icon = "users", Duration = 2 })
     end
 })
 
