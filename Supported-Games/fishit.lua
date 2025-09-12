@@ -2001,7 +2001,7 @@ local boostfps_btn = TabMisc:Button({
         end
 
         if not boostFeature then
-            boostFeature = FeatureManager:LoadFeature("BoostFPS")
+            boostFeature = FeatureManager:GetFeature("BoostFPS")
             if not boostFeature then
                 WindUI:Notify({ Title="Failed", Content="Could not load BoostFPS", Icon="x", Duration=3 })
                 return
