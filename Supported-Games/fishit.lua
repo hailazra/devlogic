@@ -165,15 +165,15 @@ end
 task.spawn(preloadAllFeatures)
 
 WindUI:AddTheme({
-    Name        = "StarlessMonoBlue",
-    Accent      = "#9AB6FF",
-    Dialog      = "#0F1320",
-    Outline     = "#2A3650",
-    Text        = "#E6EEFF",
-    Placeholder = "#93A4C6",
-    Background  = "#070A12",
-    Button      = "#172340",
-    Icon        = "#BFD1FF",
+    Name        = "StarlessMonoPro",
+    Accent      = "#DDE3F0", -- starlight lembut (bukan putih murni)
+    Dialog      = "#13151A", -- panel
+    Outline     = "#303845", -- border dingin (bukan putih)
+    Text        = "#E9ECF2", -- teks nyaman
+    Placeholder = "#9AA3AE", -- hint
+    Background  = "#0A0B0D", -- hampir hitam
+    Button      = "#1E232C", -- tombol idle
+    Icon        = "#F2F6FF", -- ikon sedikit lebih terang
 })
 
 --========== WINDOW ==========
@@ -183,7 +183,7 @@ local Window = WindUI:CreateWindow({
     Author        = "Fish It",
     Folder        = "AtresHub",
     Size          = UDim2.fromOffset(250, 250),
-    Theme         = "StarlessMonoBlue",
+    Theme         = "StarlessMonoPro",
     Resizable     = false,
     SideBarWidth  = 150,
     HideSearchBar = true,
