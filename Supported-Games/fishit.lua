@@ -166,14 +166,14 @@ task.spawn(preloadAllFeatures)
 
 WindUI:AddTheme({
     Name = "StarlessMono",
-    Accent = "#edeffb",
-    Dialog = "#11151b",
-    Outline = "#2a313b",
-    Text = "#e7ebf3",
-    Placeholder = "#9aa3ae",
-    Background = "#0a0d12",
-    Button = "#1a202c",
-    Icon = "#f2f6ff",
+    Accent      = "#EDEFFBFF",
+    Dialog      = "#11151BFF",
+    Outline     = "#2A313BFF",
+    Text        = "#E7EBF3FF",
+    Placeholder = "#9AA3AEFF",
+    Background  = "#0A0D12FF",
+    Button      = "#1A202CFF",
+    Icon        = "#F2F6FFFF",
 })
 
 
