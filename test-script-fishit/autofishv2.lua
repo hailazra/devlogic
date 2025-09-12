@@ -228,8 +228,6 @@ function AutoFishFeature:ExecuteSpamFishingSequence()
     if not self:CastRod() then
         return false
     end
-    
-    task.wait(2)
 
     -- Step 4: Start completion spam with mode-specific behavior
     self:StartCompletionSpam(config.spamDelay, config.maxSpamTime)
