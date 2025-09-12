@@ -593,43 +593,18 @@ Window:Tag({
     Color = Color3.fromHex("#000000")
 })
 
--- === Topbar Changelog (simple) ===
-local CHANGELOG = table.concat({
-    "[+] Auto Fishing",
-    "[+] Auto Teleport Island",
-    "[+] Auto Buy Weather",
-    "[+] Auto Sell Fish",
-    "[+] Webhook",
+--========== CHANGELOG & DC LINK==========--
+local changelog = table.concat({
+    "[+] Cancel Fishing",
+    "[/] Auto Fishing (Now much faster)",
+    "[/] Auto Teleport to Event (Fixed detection)",
+    "[/] Webhook Embed",
+    "[/] Small fix for GUI",
 }, "\n")
-local DISCORD = table.concat({
+
+local discord = table.concat({
     "https://discord.gg/3AzvRJFT3M",
 }, "\n")
-    
-local function ShowChangelog()
-    Window:Dialog({
-        Title   = "Changelog",
-        Content = CHANGELOG,
-        Buttons = {
-            {
-                Title   = "Discord",
-                Icon    = "copy",
-                Variant = "Secondary",
-                Callback = function()
-                    if typeof(setclipboard) == "function" then
-                        setclipboard(DISCORD)
-                        WindUI:Notify({ Title = "Copied", Content = "Changelog copied", Icon = "check", Duration = 2 })
-                    else
-                        WindUI:Notify({ Title = "Info", Content = "Clipboard not available", Icon = "info", Duration = 3 })
-                    end
-                end
-            },
-            { Title = "Close", Variant = "Primary" }
-        }
-    })
-end
-
--- name, icon, callback, order
-Window:CreateTopbarButton("changelog", "newspaper", ShowChangelog, 995)
 
 --========== TABS ==========
 local TabHome            = Window:Tab({ Title = "Home",           Icon = "house" })
@@ -648,20 +623,24 @@ local info_sec = TabHome:Section({
     Opened = true
 })
 
-local AboutUs = info_sec:Paragraph({
-    Title = ".devlogic",
-    Desc = "If you found bugs or have suggestion, let us know.",
-    Color = "White",
-    ImageSize = 30,})
-
-local DiscordBtn = info_sec:Button({
-    Title = "Discord",
-    Icon  = "message-circle",
-    Callback = function()
-        if setclipboard then
-            setclipboard("https://discord.gg/3AzvRJFT3M") -- ganti invite kamu
-        end
-    end
+local info_para = TabHome:Paragraph({
+    Title = "Changelog v0.0.5",
+    Desc = changelog,
+    Locked = false,
+    Buttons = {
+        {
+            Icon = "copy",
+            Title = "Discord",
+            Callback = function() 
+            if typeof(setclipboard) == "function" then
+                        setclipboard(discord)
+                        WindUI:Notify({ Title = "Copied", Content = "Changelog copied", Icon = "check", Duration = 2 })
+                    else
+                        WindUI:Notify({ Title = "Info", Content = "Clipboard not available", Icon = "info", Duration = 3 })
+                    end
+                end
+        }
+    }
 })
 
 local othersec = TabHome:Section({ 
