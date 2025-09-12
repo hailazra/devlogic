@@ -165,18 +165,16 @@ end
 task.spawn(preloadAllFeatures)
 
 WindUI:AddTheme({
-    Name = "StarlessMono",
-    Accent      = "#EDEFFBFF",
-    Dialog      = "#11151BFF",
-    Outline     = "#2A313BFF",
-    Text        = "#E7EBF3FF",
-    Placeholder = "#9AA3AEFF",
-    Background  = "#0A0D12FF",
-    Button      = "#1A202CFF",
-    Icon        = "#F2F6FFFF",
+    Name        = "StarlessMono",
+    Accent      = "#EDEFFB",
+    Dialog      = "#11151B",
+    Outline     = "#2A313B",
+    Text        = "#E7EBF3",
+    Placeholder = "#9AA3AE",
+    Background  = "#0A0D12",
+    Button      = "#1A202C",
+    Icon        = "#F2F6FF",
 })
-
-
 
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
