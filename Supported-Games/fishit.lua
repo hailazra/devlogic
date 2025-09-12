@@ -178,6 +178,7 @@ local Window = WindUI:CreateWindow({
     Author        = "Fish It",
     Folder        = "AtresHub",
     Size          = UDim2.fromOffset(250, 250),
+    Transparent   = true,
     Theme         = "Dark",
     Resizable     = false,
     SideBarWidth  = 150,
@@ -185,6 +186,9 @@ local Window = WindUI:CreateWindow({
 })
 
 WindUI:SetFont("rbxasset://12187373592")
+
+WindUI.TransparencyValue = 0.25   -- 0 = solid, 1 = full tembus
+Window:ToggleTransparency(true)
 
 -- =========================
 -- IMPROVED ICON CONTROLLER (Cobalt-inspired)
