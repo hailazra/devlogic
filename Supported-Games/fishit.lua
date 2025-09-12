@@ -577,6 +577,34 @@ local autofish_tgl = TabMain:Toggle({
     end
 })
 
+--- Cancel Fishing/Fix Stuck
+
+local CancelFishingEvent = game:GetService("ReplicatedStorage")
+    .Packages._Index["sleitnick_net@0.2.0"]
+    .net["RF/CancelFishingInputs"]
+
+local cancelautofish_btn = TabMain:Button({
+    Title = "Cancel Fishing",
+    Desc = "Fix Stuck when Fishing",
+    Locked = false,
+    Callback = function()
+        if CancelFishingEvent and CancelFishingEvent.InvokeServer then
+            local success, result = pcall(function()
+                return CancelFishingEvent:InvokeServer()
+            end)
+
+            if success then
+                print("[CancelFishingInputs] Sukses invoke!", result)
+            else
+                warn("[CancelFishingInputs] Gagal invoke!", result)
+            end
+        else
+            warn("[CancelFishingInputs] RemoteFunction tidak ditemukan!")
+        end
+    end
+})
+
+
 --- Event Teleport
 local eventtele_sec = TabMain:Section({ 
     Title = "Event Teleport",
