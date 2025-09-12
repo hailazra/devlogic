@@ -1656,11 +1656,10 @@ end
 
 local teleplayerFeature = nil
 local currentPlayerName = nil
-local playerlist        = listPlayers()
 
 local teleplayer_dd = teleplayer_sec:Dropdown({
     Title = "Select Player",
-    Values = playerlist,
+    Values = listPlayers(true),
     Value = "",
     Callback = function(option) 
         currentPlayerName = name
