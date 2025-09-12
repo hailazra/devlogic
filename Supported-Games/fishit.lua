@@ -164,6 +164,18 @@ end
 -- Execute preloading immediately
 task.spawn(preloadAllFeatures)
 
+WindUI:AddTheme({
+    Name = "AtresBlue",
+    Accent = "#1e3a8a",         -- Deep black background
+    Dialog = "#004293",         -- Match dialog to background
+    Outline = "#93c5fd",        -- Bright blue outline (Sonic blue)
+    Text = "#bfdbfe",           -- Clean white text
+    Placeholder = "#60a5fa",    -- Soft gray placeholder
+    Background = "#004293",     -- Main background
+    Button = "#2563eb",         -- Slightly lighter button
+    Icon = "#3b82f6",           -- Blue icons to match outline
+})
+
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
     Title         = "AtresHub",
@@ -171,9 +183,9 @@ local Window = WindUI:CreateWindow({
     Author        = "Fish It",
     Folder        = "AtresHub",
     Size          = UDim2.fromOffset(250, 250),
-    Theme         = "Midnight",
+    Theme         = "AtresBlue",
     Resizable     = false,
-    SideBarWidth  = 120,
+    SideBarWidth  = 150,
     HideSearchBar = true,
 })
 
