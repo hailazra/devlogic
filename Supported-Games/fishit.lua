@@ -59,7 +59,8 @@ local FEATURE_URLS = {
     AntiAfk            = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/antiafk.lua", 
     AutoEnchantRod     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoenchantrodv1.lua",
     AutoFavoriteFish   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofavoritefish.lua",
-    AutoTeleportPlayer = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportplayer.lua"
+    AutoTeleportPlayer = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportplayer.lua",
+    BoostFPS           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/boostfps.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -109,6 +110,7 @@ local function preloadAllFeatures()
     -- Urutan loading (critical features first)
     local loadOrder = {
         "AntiAfk",           -- Utility first
+        "BoostFPS",
         "AutoFish",          -- Core features
         "AutoSellFish",
         "AutoTeleportIsland",
@@ -1985,12 +1987,57 @@ local antiafk_tgl = TabMisc:Toggle({
 })
 
 --- Boost FPS
+local alreadyApplied = false
+local boostFeature = nil
+
 local boostfps_btn = TabMisc:Button({
     Title = "Boost FPS",
-    Desc = "Test Button",
+    Desc = "Reduce Graphics",
     Locked = false,
     Callback = function()
-        print("clicked")
+        if alreadyApplied then
+            WindUI:Notify({
+                Title = "Boost FPS",
+                Content = "Already applied",
+                Icon = "info",
+                Duration = 2
+            })
+            return
+        end
+
+        if not boostFeature then
+            boostFeature = FeatureManager:GetFeature("BoostFPS")
+            if not boostFeature then
+                WindUI:Notify({
+                    Title = "Failed",
+                    Content = "Could not load BoostFPS",
+                    Icon = "x",
+                    Duration = 3
+                })
+                return
+            end
+        end
+
+        local ok, err = pcall(function()
+            boostFeature:Apply({})
+        end)
+
+        if ok then
+            alreadyApplied = true
+            WindUI:Notify({
+                Title = "Boost FPS",
+                Content = "Applied",
+                Icon = "check",
+                Duration = 2
+            })
+        else
+            WindUI:Notify({
+                Title = "Error",
+                Content = tostring(err),
+                Icon = "x",
+                Duration = 3
+            })
+        end
     end
 })
 
