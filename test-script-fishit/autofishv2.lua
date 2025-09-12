@@ -69,7 +69,7 @@ local FISHING_CONFIGS = {
         spamDelay = 0.1,
         maxSpamTime = 8,
         skipMinigame = false,  -- Play tap-tap animation
-        minigameDuration = 3 -- Duration before firing completion
+        minigameDuration = 20 -- Duration before firing completion
     }
 }
 
