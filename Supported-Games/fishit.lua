@@ -1662,10 +1662,10 @@ local teleplayer_dd = teleplayer_sec:Dropdown({
     Values = listPlayers(true),
     Value = "",
     Callback = function(option) 
-        currentPlayerName = name
+        currentPlayerName = option
         -- sinkron ke feature kalau sudah diload
         if teleplayerFeature and teleplayerFeature.SetTarget then
-            teleplayerFeature:SetTarget(name)
+            teleplayerFeature:SetTarget(option)
         end
     end
 })
