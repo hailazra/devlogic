@@ -592,7 +592,7 @@ end
 -- =========================
 
 Window:Tag({
-    Title = "v0.0.0",
+    Title = "v0.0.4",
     Color = Color3.fromHex("#000000")
 })
 
@@ -632,7 +632,7 @@ local info_sec = TabHome:Section({
 })
 
 local info_para = TabHome:Paragraph({
-    Title = "Changelog v0.0.5",
+    Title = "Changelog v0.0.4",
     Desc = CHANGELOG,
     Locked = false,
     Buttons = {
@@ -660,7 +660,7 @@ local autofish_sec = TabMain:Section({
 })
 
 local autoFishFeature = nil
-local currentFishingMode = "Perfect"
+local currentFishingMode = "Fast"
 
 local autofishmode_dd = autofish_sec:Dropdown({
     Title = "Fishing Mode",
