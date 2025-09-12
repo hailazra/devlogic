@@ -1,5 +1,5 @@
 --========================================================
--- Feature: AutoTeleportEvent (Fixed v3)
+-- Feature: AutoTeleportEvent (Fixed v4)
 --========================================================
 
 local AutoTeleportEvent = {}
@@ -19,6 +19,7 @@ local charConn         = nil
 local propsAddedConn   = nil         -- jika Props di-recreate
 local propsRemovedConn = nil         -- detect props removal
 local workspaceConn    = nil         -- scan workspace changes
+local notificationConn = nil         -- listener untuk event notification
 local eventsFolder     = nil         -- ReplicatedStorage.Events
 
 local selectedPriorityList = {}      -- <<< urutan prioritas (array)
@@ -27,6 +28,7 @@ local hoverHeight           = 15
 local savedPosition         = nil    -- HARD save position before any teleport
 local currentTarget         = nil    -- { model, name, nameKey, pos, propsName }
 local lastKnownActiveProps  = {}     -- track active props for cleanup detection
+local notifiedEvents        = {}     -- track events dari notifikasi
 
 -- Cache nama event valid (dari ReplicatedStorage.Events)
 local validEventName = {}            -- set of normName
@@ -92,6 +94,66 @@ local function indexEvents()
     scan(eventsFolder)
 end
 
+-- ===== Setup Event Notification Listener =====
+local function setupEventNotificationListener()
+    if notificationConn then notificationConn:Disconnect() end
+    
+    -- Cari RE/TextNotification
+    local textNotificationRE = nil
+    local packagesFolder = ReplicatedStorage:FindFirstChild("Packages")
+    
+    if packagesFolder then
+        -- Cari path: Packages._Index["sleitnick_net@0.2.0"].net["RE/TextNotification"]
+        local indexFolder = packagesFolder:FindFirstChild("_Index")
+        if indexFolder then
+            for _, child in ipairs(indexFolder:GetChildren()) do
+                if child.Name:find("sleitnick_net") then
+                    local netFolder = child:FindFirstChild("net")
+                    if netFolder then
+                        textNotificationRE = netFolder:FindFirstChild("RE/TextNotification")
+                        if textNotificationRE then break end
+                    end
+                end
+            end
+        end
+    end
+    
+    if textNotificationRE then
+        print("[AutoTeleportEvent] Found TextNotification RE, setting up listener")
+        notificationConn = textNotificationRE.OnClientEvent:Connect(function(data)
+            if type(data) == "table" and data.Type == "Event" and data.Text then
+                local eventName = data.Text
+                local eventKey = normName(eventName)
+                
+                print("[AutoTeleportEvent] Event notification received:", eventName)
+                
+                -- Simpan ke notified events untuk membantu matching
+                notifiedEvents[eventKey] = {
+                    name = eventName,
+                    timestamp = os.clock()
+                }
+                
+                -- Clean up old notifications (older than 5 minutes)
+                for key, info in pairs(notifiedEvents) do
+                    if os.clock() - info.timestamp > 300 then
+                        notifiedEvents[key] = nil
+                    end
+                end
+                
+                -- Trigger immediate scan jika sedang running
+                if running then
+                    task.spawn(function()
+                        task.wait(1) -- Wait a bit for the event to spawn in workspace
+                        -- Force scan on next heartbeat
+                    end)
+                end
+            end
+        end)
+    else
+        warn("[AutoTeleportEvent] Could not find TextNotification RE")
+    end
+end
+
 -- ===== Resolve Model Pivot =====
 local function resolveModelPivotPos(model)
     local ok, cf = pcall(function() return model:GetPivot() end)
@@ -101,7 +163,53 @@ local function resolveModelPivotPos(model)
     return nil
 end
 
--- ===== Scan All Props in Workspace =====
+-- ===== Enhanced Event Detection =====
+local function isEventModel(model, propsName)
+    if not model:IsA("Model") then return false end
+    
+    local modelName = model.Name
+    local modelKey = normName(modelName)
+    
+    -- 1. Check against ReplicatedStorage.Events
+    if validEventName[modelKey] then
+        return true, modelName, modelKey
+    end
+    
+    -- 2. Check against recent notifications dengan fuzzy matching
+    for notifKey, notifInfo in pairs(notifiedEvents) do
+        -- Exact match
+        if modelKey == notifKey then
+            return true, notifInfo.name, modelKey
+        end
+        
+        -- Fuzzy matching - check if either contains the other
+        if modelKey:find(notifKey, 1, true) or notifKey:find(modelKey, 1, true) then
+            return true, notifInfo.name, modelKey
+        end
+        
+        -- Special cases for common name variations
+        -- "Model" -> could be any recent event
+        if modelName == "Model" and os.clock() - notifInfo.timestamp < 30 then
+            return true, notifInfo.name, modelKey
+        end
+    end
+    
+    -- 3. Common event patterns
+    local eventPatterns = {
+        "hunt", "boss", "raid", "event", "invasion", "attack", 
+        "storm", "hole", "meteor", "comet", "shark", "worm"
+    }
+    
+    for _, pattern in ipairs(eventPatterns) do
+        if modelKey:find(pattern, 1, true) then
+            return true, modelName, modelKey
+        end
+    end
+    
+    return false
+end
+
+-- ===== Scan All Props in Workspace (FIXED: Direct children only) =====
 local function scanAllActiveProps()
     local activePropsList = {}
     
@@ -110,28 +218,23 @@ local function scanAllActiveProps()
         if child:IsA("Model") or child:IsA("Folder") then
             local childName = child.Name
             if childName == "Props" or childName:find("Props") then
-                -- Ini adalah Props folder, scan isinya
-                for _, desc in ipairs(child:GetDescendants()) do
-                    if desc:IsA("Model") then
-                        local model = desc
-                        local mKey = normName(model.Name)
-                        local pKey = model.Parent and normName(model.Parent.Name) or nil
+                -- Ini adalah Props folder, scan DIRECT CHILDREN saja (bukan descendants)
+                for _, directChild in ipairs(child:GetChildren()) do
+                    if directChild:IsA("Model") then
+                        local model = directChild
+                        local isEvent, eventName, eventKey = isEventModel(model, childName)
                         
-                        local isEventish = 
-                            (validEventName[mKey] == true) or
-                            (pKey and validEventName[pKey] == true)
-                        
-                        if isEventish then
+                        if isEvent then
                             local pos = resolveModelPivotPos(model)
                             if pos then
-                                local repName = model.Parent and model.Parent.Name or model.Name
                                 table.insert(activePropsList, {
                                     model     = model,
-                                    name      = repName,
-                                    nameKey   = normName(repName),
+                                    name      = eventName,
+                                    nameKey   = eventKey,
                                     pos       = pos,
                                     propsName = childName -- track which props this belongs to
                                 })
+                                print("[AutoTeleportEvent] Found event:", eventName, "in", childName)
                             end
                         end
                     end
@@ -144,20 +247,33 @@ local function scanAllActiveProps()
 end
 
 -- ===== Match terhadap pilihan user =====
-local function matchesSelection(nameKey)
+local function matchesSelection(nameKey, displayName)
     if #selectedPriorityList == 0 then return true end -- user tidak memilih apa-apa -> semua boleh
-    -- "contains" match dua arah supaya toleran variasi nama
+    
+    -- Check against both nameKey and displayName
     for _, selKey in ipairs(selectedPriorityList) do
+        -- Match dengan nameKey
         if nameKey:find(selKey, 1, true) or selKey:find(nameKey, 1, true) then
+            return true
+        end
+        
+        -- Match dengan display name
+        local displayKey = normName(displayName)
+        if displayKey:find(selKey, 1, true) or selKey:find(displayKey, 1, true) then
             return true
         end
     end
     return false
 end
 
-local function rankOf(nameKey)
+local function rankOf(nameKey, displayName)
     for i, selKey in ipairs(selectedPriorityList) do
         if nameKey:find(selKey, 1, true) or selKey:find(nameKey, 1, true) then
+            return i
+        end
+        
+        local displayKey = normName(displayName)
+        if displayKey:find(selKey, 1, true) or selKey:find(displayKey, 1, true) then
             return i
         end
     end
@@ -173,7 +289,7 @@ local function chooseBestActiveEvent()
     local filtered = {}
     if #selectedPriorityList > 0 then
         for _, a in ipairs(actives) do
-            if matchesSelection(a.nameKey) then
+            if matchesSelection(a.nameKey, a.name) then
                 table.insert(filtered, a)
             end
         end
@@ -185,7 +301,7 @@ local function chooseBestActiveEvent()
     end
 
     for _, a in ipairs(actives) do
-        a.rank = rankOf(a.nameKey)
+        a.rank = rankOf(a.nameKey, a.name)
     end
 
     table.sort(actives, function(a, b)
@@ -339,11 +455,17 @@ local function setupWorkspaceMonitoring()
         end
     end)
     
-    -- General workspace monitoring for any changes
-    workspaceConn = Workspace.DescendantAdded:Connect(function(desc)
-        if desc:IsA("Model") and desc.Parent and (desc.Parent.Name == "Props" or desc.Parent.Name:find("Props")) then
-            -- New event model added
-            task.wait(0.1) -- Small delay to let it fully load
+    -- Monitor for direct children added to Props (FIXED: bukan descendants)
+    workspaceConn = Workspace.ChildAdded:Connect(function(child)
+        if child.Name == "Props" or child.Name:find("Props") then
+            local propsFolder = child
+            -- Monitor direct children of this props folder
+            propsFolder.ChildAdded:Connect(function(propsChild)
+                if propsChild:IsA("Model") then
+                    task.wait(0.1) -- Small delay to let it fully load
+                    print("[AutoTeleportEvent] New model added to", propsFolder.Name, ":", propsChild.Name)
+                end
+            end)
         end
     end)
 end
@@ -352,6 +474,7 @@ end
 function AutoTeleportEvent:Init(gui)
     eventsFolder = ReplicatedStorage:FindFirstChild("Events") or waitChild(ReplicatedStorage, "Events", 5)
     indexEvents()
+    setupEventNotificationListener()
 
     if charConn then charConn:Disconnect() end
     charConn = LocalPlayer.CharacterAdded:Connect(function()
@@ -432,12 +555,14 @@ function AutoTeleportEvent:Cleanup()
     if propsAddedConn   then propsAddedConn:Disconnect();   propsAddedConn = nil end
     if propsRemovedConn then propsRemovedConn:Disconnect(); propsRemovedConn = nil end
     if workspaceConn    then workspaceConn:Disconnect();    workspaceConn = nil end
+    if notificationConn then notificationConn:Disconnect(); notificationConn = nil end
     
     eventsFolder = nil
     table.clear(validEventName)
     table.clear(selectedPriorityList)
     table.clear(selectedSet)
     table.clear(lastKnownActiveProps)
+    table.clear(notifiedEvents)
     savedPosition = nil
     currentTarget = nil
     
@@ -489,11 +614,12 @@ end
 
 function AutoTeleportEvent:Status()
     return {
-        running     = running,
-        hover       = hoverHeight,
-        hasSavedPos = savedPosition ~= nil,
-        target      = currentTarget and currentTarget.name or nil,
-        activeProps = lastKnownActiveProps
+        running       = running,
+        hover         = hoverHeight,
+        hasSavedPos   = savedPosition ~= nil,
+        target        = currentTarget and currentTarget.name or nil,
+        activeProps   = lastKnownActiveProps,
+        notifications = notifiedEvents
     }
 end
 
