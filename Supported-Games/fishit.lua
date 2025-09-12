@@ -81,12 +81,7 @@ function FeatureManager:LoadFeature(featureName, controls)
         local initSuccess = pcall(feature.Init, feature, controls)
         if initSuccess then
             self.LoadedFeatures[featureName] = feature
-            WindUI:Notify({
-                Title = "Success",
-                Content = featureName .. " loaded successfully",
-                Icon = "check",
-                Duration = 2
-            })
+            print(featureName .. "Loaded Successfully!")
             return feature
         end
     end
