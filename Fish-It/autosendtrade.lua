@@ -1,4 +1,4 @@
--- Fish-It/autosendtrade.lua
+-- Fish-It/autosendtrade.lua (FIXED VERSION)
 local AutoSendTrade = {}
 AutoSendTrade.__index = AutoSendTrade
 
@@ -16,7 +16,7 @@ local hbConn = nil
 local inventoryWatcher = nil
 
 -- Configuration
-local selectedTiers = {} -- set: { [tierNumber] = true } for fish
+local selectedTiers = {} -- set: { [tierNumber] = true } for fish (FIXED: consistent with autofavoritefish)
 local selectedItems = {} -- set: { ["Enchant Stone"] = true } for items
 local selectedPlayers = {} -- set: { [playerName] = true }
 local TICK_STEP = 0.5 -- throttle interval
@@ -122,31 +122,35 @@ local function findTextNotificationRemote()
     end)
 end
 
-local function shouldTradeItem(entry, category)
-    if not entry then return false end
+-- FIXED: Simplified function logic to match autofavoritefish exactly
+local function shouldTradeFish(fishEntry)
+    if not fishEntry then return false end
+    
+    local fishId = fishEntry.Id or fishEntry.id
+    if not fishId then return false end
+    
+    local fishData = fishDataCache[fishId]
+    if not fishData then return false end
+    
+    local tier = fishData.Tier
+    if not tier then return false end
+    
+    -- Check if this tier is selected (EXACTLY like autofavoritefish)
+    return selectedTiers[tier] == true
+end
 
-    -- id fleksibel: Id/id/FishId/ItemId
-    local itemId = entry.Id or entry.id or entry.FishId or entry.ItemId
+-- FIXED: Separate function for items
+local function shouldTradeItem(itemEntry)
+    if not itemEntry then return false end
+    
+    local itemId = itemEntry.Id or itemEntry.id
     if not itemId then return false end
-
-    if category == "Fishes" then
-        local fishData = fishDataCache[itemId]
-        if not fishData then return false end
-
-        local tierNum = tonumber(fishData.Tier) or fishData.Tier
-        local tierInfo = tierDataCache[tierNum]
-        local tierName = tierInfo and tierInfo.Name
-
-        -- match by angka atau nama (karena SetSelectedItems simpan dua-duanya)
-        return (tierNum and selectedTiers[tierNum]) or (tierName and selectedTiers[tierName]) or false
-
-    elseif category == "Items" then
-        local itemData = itemDataCache[itemId]
-        if not itemData then return false end
-        local itemName = itemData.Name
-        return itemName and selectedItems[itemName] == true
-    end
-    return false
+    
+    local itemData = itemDataCache[itemId]
+    if not itemData then return false end
+    
+    local itemName = itemData.Name
+    return itemName and selectedItems[itemName] == true
 end
 
 local function getRandomTargetPlayerId()
@@ -192,11 +196,11 @@ local function processInventory()
     end
     if not hasTargets then return end
     
-    -- Process Fishes - menggunakan cara yang sama persis dengan autofavoritefish
+    -- FIXED: Process Fishes using the exact same logic as autofavoritefish
     local fishes = inventoryWatcher:getSnapshotTyped("Fishes")
     if fishes and #fishes > 0 then
         for _, fishEntry in ipairs(fishes) do
-            if shouldTradeItem(fishEntry, "Fishes") then
+            if shouldTradeFish(fishEntry) then -- FIXED: Use simplified function
                 local uuid = fishEntry.UUID or fishEntry.Uuid or fishEntry.uuid
                 if uuid then
                     -- Check if already in queue
@@ -236,7 +240,7 @@ local function processInventory()
     local items = inventoryWatcher:getSnapshotTyped("Items")
     if items and #items > 0 then
         for _, itemEntry in ipairs(items) do
-            if shouldTradeItem(itemEntry, "Items") then
+            if shouldTradeItem(itemEntry) then -- FIXED: Use simplified function
                 local uuid = itemEntry.UUID or itemEntry.Uuid or itemEntry.uuid
                 if uuid then
                     -- Check if already in queue
@@ -328,20 +332,24 @@ function AutoSendTrade:Init(guiControls)
         print("[AutoSendTrade] Inventory watcher ready")
     end)
     
-    -- Populate GUI dropdown if provided
-    -- Populate GUI dropdown if provided
-if guiControls and guiControls.itemDropdown then
-    local options = {}
-    -- ambil semua tier dari cache, sort by Tier
-    local tiersArr = {}
-    for _, info in pairs(tierDataCache) do table.insert(tiersArr, info) end
-    table.sort(tiersArr, function(a,b) return (a.Tier or 0) < (b.Tier or 0) end)
-    for _, info in ipairs(tiersArr) do
-        table.insert(options, info.Name)
+    -- FIXED: Populate GUI dropdown with consistent format as autofavoritefish
+    if guiControls and guiControls.itemDropdown then
+        local tierNames = {}
+        for tierNum = 1, 7 do
+            if tierDataCache[tierNum] then
+                table.insert(tierNames, tierDataCache[tierNum].Name)
+            end
+        end
+        
+        -- Add items
+        table.insert(tierNames, "Enchant Stone")
+        
+        -- Reload dropdown with tier names
+        pcall(function()
+            guiControls.itemDropdown:Reload(tierNames)
+        end)
     end
-    table.insert(options, "Enchant Stone")
-    pcall(function() guiControls.itemDropdown:Reload(options) end)
-end 
+    
     return true
 end
 
@@ -351,7 +359,7 @@ function AutoSendTrade:Start(config)
     -- Apply config if provided
     if config then
         if config.tierList then
-            self:SetSelectedItems(config.tierList)
+            self:SetTiers(config.tierList) -- FIXED: Use SetTiers instead of SetSelectedItems
         end
         if config.playerList then
             self:SetSelectedPlayers(config.playerList)
@@ -402,7 +410,6 @@ function AutoSendTrade:Cleanup()
     table.clear(selectedItems)
     table.clear(selectedPlayers)
     table.clear(tradeQueue)
-    table.clear(pendingTrades)
     
     tradeRemote = nil
     textNotificationRemote = nil
@@ -413,77 +420,75 @@ end
 
 -- === Setters ===
 
--- helper kecil buat ambil string dari opsi dropdown apa pun
-local function _optToString(v)
-    if type(v) == "string" then return v end
-    if type(v) == "number" then return tostring(v) end
-    if type(v) == "table" then
-        return v.Value or v.value or v.Name or v.name or v[1] or v.Selected or v.selection
-    end
-    return nil
-end
-
-function AutoSendTrade:SetSelectedItems(itemInput)
-    -- bersihin dulu
+-- FIXED: Use the EXACT same SetTiers function as autofavoritefish
+function AutoSendTrade:SetTiers(tierInput)
+    if not tierInput then return false end
+    
+    -- Clear current selection
     table.clear(selectedTiers)
-    table.clear(selectedItems)
-
-    local function addByName(name)
-        if not name then return end
-        name = tostring(name):gsub("^%s+",""):gsub("%s+$","") -- trim
-
-        -- cocokkan ke tier by name/number
-        for tierNum, tierInfo in pairs(tierDataCache) do
-            if tierInfo and (tierInfo.Name == name or tostring(tierNum) == name) then
-                -- simpan dua kunci: angka & nama → bikin shouldTradeItem anti-miss
-                selectedTiers[tierNum] = true
-                selectedTiers[tierInfo.Name] = true
-                return
-            end
-        end
-
-        -- item biasa
-        if name == "Enchant Stone" then
-            selectedItems[name] = true
-        end
-    end
-
-    local t = type(itemInput)
-    if t == "string" or t == "number" then
-        addByName(itemInput)
-    elseif t == "table" then
-        if #itemInput > 0 then
-            for _, v in ipairs(itemInput) do
-                addByName(_optToString(v))
+    
+    -- Handle both array and set formats
+    if type(tierInput) == "table" then
+        -- If it's an array of tier names
+        if #tierInput > 0 then
+            for _, tierName in ipairs(tierInput) do
+                -- Find tier number by name
+                for tierNum, tierInfo in pairs(tierDataCache) do
+                    if tierInfo.Name == tierName then
+                        selectedTiers[tierNum] = true
+                        break
+                    end
+                end
             end
         else
-            for k, v in pairs(itemInput) do
-                -- dukung format set {["Legendary"]=true} atau { {Value="Legendary"}, ... }
-                if type(k) ~= "number" and v then
-                    addByName(_optToString(k))
-                else
-                    addByName(_optToString(v))
+            -- If it's a set/dict format
+            for tierName, enabled in pairs(tierInput) do
+                if enabled then
+                    -- Find tier number by name
+                    for tierNum, tierInfo in pairs(tierDataCache) do
+                        if tierInfo.Name == tierName then
+                            selectedTiers[tierNum] = true
+                            break
+                        end
+                    end
                 end
             end
         end
     end
-
-    -- log nama yang kepilih biar gampang ngecek
-    local pickedTierNames = {}
-    for k, enabled in pairs(selectedTiers) do
-        if enabled and type(k) == "number" and tierDataCache[k] then
-            table.insert(pickedTierNames, tierDataCache[k].Name)
-        end
-    end
-    print("[AutoSendTrade] Selected Tiers:", table.concat(pickedTierNames, ", "))
-    local pickedItems = {}
-    for name, enabled in pairs(selectedItems) do
-        if enabled then table.insert(pickedItems, name) end
-    end
-    print("[AutoSendTrade] Selected Items:", table.concat(pickedItems, ", "))
+    
+    print("[AutoSendTrade] Selected tiers:", selectedTiers)
     return true
 end
 
+-- FIXED: Separate function for items only (not mixed with tiers)
+function AutoSendTrade:SetSelectedItems(itemInput)
+    if not itemInput then return false end
+    
+    -- Clear current item selection
+    table.clear(selectedItems)
+    
+    -- Handle both array and set formats
+    if type(itemInput) == "table" then
+        -- If it's an array of item names
+        if #itemInput > 0 then
+            for _, itemName in ipairs(itemInput) do
+                if itemName == "Enchant Stone" then
+                    selectedItems[itemName] = true
+                end
+            end
+        else
+            -- If it's a set/dict format
+            for itemName, enabled in pairs(itemInput) do
+                if enabled and itemName == "Enchant Stone" then
+                    selectedItems[itemName] = true
+                end
+            end
+        end
+    end
+    
+    print("[AutoSendTrade] Selected items:", selectedItems)
+    return true
+end
 
 function AutoSendTrade:SetSelectedPlayers(playerInput)
     if not playerInput then return false end
@@ -552,23 +557,23 @@ function AutoSendTrade:GetOnlinePlayers()
     return players
 end
 
-function AutoSendTrade:GetSelectedItems()
+function AutoSendTrade:GetSelectedTiers()
     local selected = {}
-    
-    -- Add selected tiers
     for tierNum, enabled in pairs(selectedTiers) do
         if enabled and tierDataCache[tierNum] then
             table.insert(selected, tierDataCache[tierNum].Name)
         end
     end
-    
-    -- Add selected items
+    return selected
+end
+
+function AutoSendTrade:GetSelectedItems()
+    local selected = {}
     for itemName, enabled in pairs(selectedItems) do
         if enabled then
             table.insert(selected, itemName)
         end
     end
-    
     return selected
 end
 
@@ -586,7 +591,11 @@ function AutoSendTrade:GetQueueSize()
     return #tradeQueue
 end
 
--- Alias methods untuk kompatibilitas GUI pattern yang berbeda
+-- FIXED: Alias methods with proper function calls
+function AutoSendTrade:SetDesiredTiersByNames(tierInput)
+    return self:SetTiers(tierInput)
+end
+
 function AutoSendTrade:SetDesiredItemsByNames(itemInput)
     return self:SetSelectedItems(itemInput)
 end
@@ -597,6 +606,34 @@ end
 
 function AutoSendTrade:RefreshPlayerList()
     return self:GetOnlinePlayers()
+end
+
+-- FIXED: Add debug function like autofavoritefish
+function AutoSendTrade:DebugFishStatus(limit)
+    if not inventoryWatcher then return end
+    
+    local fishes = inventoryWatcher:getSnapshotTyped("Fishes")
+    if not fishes or #fishes == 0 then return end
+    
+    print("=== DEBUG FISH STATUS (AutoSendTrade) ===")
+    for i, fishEntry in ipairs(fishes) do
+        if limit and i > limit then break end
+        
+        local fishId = fishEntry.Id or fishEntry.id
+        local uuid = fishEntry.UUID or fishEntry.Uuid or fishEntry.uuid
+        local fishData = fishDataCache[fishId]
+        local fishName = fishData and fishData.Name or "Unknown"
+        
+        print(string.format("%d. %s (%s)", i, fishName, uuid or "no-uuid"))
+        
+        if fishData then
+            local tierInfo = tierDataCache[fishData.Tier]
+            local tierName = tierInfo and tierInfo.Name or "Unknown"
+            print("   Tier:", tierName, "- Should trade:", shouldTradeFish(fishEntry))
+        end
+        print("")
+    end
+    print("Selected tiers:", selectedTiers)
 end
 
 return AutoSendTrade
