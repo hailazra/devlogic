@@ -16,6 +16,7 @@ local BaitModule = ReplicatedStorage.Baits
 local ItemsModule = ReplicatedStorage.Items
 local WeatherModule = ReplicatedStorage.Events
 local BoatModule = ReplicatedStorage.Boats
+local TierModule = ReplicatedStorage.Tiers
 
 -- === DROPDOWN HELPERS FOR GAME SOURCE === --
 -- Enchant List
@@ -77,7 +78,9 @@ local function getFishingRodNames()
     return rodNames
 end
 
+local baitName = getBaitNames()
 local listRod = getFishingRodNames()
+
 
 -- Make global for features to access
 _G.GameServices = {
@@ -1334,7 +1337,6 @@ local shopbait_sec = TabShop:Section({
 
 local autobuybaitFeature = nil
 local selectedBaitsSet = {}
-local baitName = getBaitNames()
 
 local shopbait_ddm = shopbait_sec:Dropdown({
     Title = "Select Bait",
