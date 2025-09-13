@@ -1,4 +1,4 @@
---- AutoAcceptTrade.lua - Auto Accept Trade Requests
+--- AutoAcceptTrade.lua - Auto Accept Trade Requests (FIXED)
 local AutoAcceptTrade = {}
 AutoAcceptTrade.__index = AutoAcceptTrade
 
@@ -16,7 +16,6 @@ local running = false
 local isProcessingTrade = false
 local currentTradeData = nil
 local clickConnection = nil
-local responseConnection = nil
 local notificationConnection = nil
 
 -- Statistics
@@ -30,6 +29,8 @@ local MAX_CLICK_ATTEMPTS = 100 -- Maximum clicks per trade (10 seconds)
 -- Remotes
 local awaitTradeResponseRemote = nil
 local textNotificationRemote = nil
+local originalAwaitTradeCB = nil  -- simpan callback asli
+local newindexHookInstalled = false
 
 -- === Helper Functions ===
 
@@ -111,22 +112,6 @@ local function clickYesButton()
         end
     end)
     
-    -- Method 3: UserInputService simulation (backup)
-    if not success then
-        pcall(function()
-            local buttonPos = yesButton.AbsolutePosition
-            local buttonSize = yesButton.AbsoluteSize
-            local centerX = buttonPos.X + (buttonSize.X / 2)
-            local centerY = buttonPos.Y + (buttonSize.Y / 2)
-            
-            -- This won't actually work on most executors, but keeping for completeness
-            UserInputService.InputBegan:Fire({
-                UserInputType = Enum.UserInputType.MouseButton1,
-                Position = Vector2.new(centerX, centerY)
-            })
-        end)
-    end
-    
     return success
 end
 
@@ -169,71 +154,142 @@ local function stopClickingLoop()
     end
 end
 
+-- FIX 1: Proper setup mengikuti pola Incoming.luau
 local function setupTradeResponseListener()
-    if not awaitTradeResponseRemote or responseConnection then return end
-    
-    -- Hook OnClientInvoke for AwaitTradeResponse
-    responseConnection = awaitTradeResponseRemote.OnClientInvoke:Connect(function(itemData, fromPlayer, timestamp)
-        if not running then return end
-        
+    if not awaitTradeResponseRemote then return false end
+
+    -- Mengikuti pola dari Incoming.luau: HandleInstance untuk RemoteFunction
+    local Success, Callback = pcall(getcallbackvalue, awaitTradeResponseRemote, "OnClientInvoke")
+    local IsCallable = (
+        typeof(Callback) == "function"
+        or getrawmetatable and getrawmetatable(Callback) ~= nil and typeof(getrawmetatable(Callback)["__call"]) == "function"
+        or false
+    )
+
+    if not Success or not IsCallable then
+        warn("[AutoAcceptTrade] getcallbackvalue failed or callback not callable")
+        return false
+    end
+
+    -- Simpan callback asli
+    originalAwaitTradeCB = Callback
+
+    -- Hook callback seperti di Incoming.luau
+    awaitTradeResponseRemote.OnClientInvoke = function(...)
+        if not running then
+            -- Jika fitur off, kembalikan ke perilaku asli game
+            return originalAwaitTradeCB(...)
+        end
+
+        local args = {...}
         print("[AutoAcceptTrade] 🔔 Trade request detected!")
-        print("  From:", fromPlayer and fromPlayer.Name or "Unknown")
-        print("  Item ID:", itemData and itemData.Id or "Unknown")
-        print("  UUID:", itemData and itemData.UUID or "Unknown")
+        print("[AutoAcceptTrade] Args received:", #args)
         
-        -- Store trade data
+        -- Parse arguments (adjust based on your game's structure)
+        local itemData = args[1]
+        local fromPlayer = args[2] 
+        local timestamp = args[3]
+        
         currentTradeData = {
             item = itemData,
             fromPlayer = fromPlayer,
             timestamp = timestamp,
-            startTime = tick()
+            startTime = tick(),
         }
-        
-        -- Start processing this trade
         isProcessingTrade = true
+
+        -- Auto-accept trade
+        print("[AutoAcceptTrade] ✅ Auto-accepting trade...")
+        totalTradesAccepted = totalTradesAccepted + 1
+        currentSessionTrades = currentSessionTrades + 1
         
-        -- Start clicking Yes button
+        -- Reset processing state after a delay
         task.spawn(function()
-            task.wait(0.5) -- Small delay before starting clicks
-            startClickingLoop()
+            task.wait(1)
+            isProcessingTrade = false
         end)
-    end)
-    
+
+        return true -- Accept the trade
+    end
+
     print("[AutoAcceptTrade] Trade response listener setup complete")
+    return true
+end
+
+-- FIX 2: Proper __newindex hook mengikuti pola Incoming.luau
+local function installNewIndexGuard()
+    if newindexHookInstalled then return end
+    
+    -- Check if hooking functions are available
+    if not hookmetamethod or not newcclosure then
+        warn("[AutoAcceptTrade] Hooking functions not available")
+        return
+    end
+
+    local originalNewIndex
+    originalNewIndex = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
+        -- Mengikuti pola dari Incoming.luau
+        if typeof(self) ~= "Instance" or self.ClassName ~= "RemoteFunction" then
+            return originalNewIndex(self, key, value)
+        end
+
+        if self == awaitTradeResponseRemote and key == "OnClientInvoke" then
+            local IsCallable = (
+                typeof(value) == "function"
+                or getrawmetatable and getrawmetatable(value) ~= nil and typeof(getrawmetatable(value)["__call"]) == "function"
+                or false
+            )
+
+            if IsCallable then
+                -- Re-wrap the new callback
+                return originalNewIndex(self, key, function(...)
+                    if running then
+                        -- Auto-accept if running
+                        print("[AutoAcceptTrade] 🔔 Trade request intercepted via newindex hook")
+                        return true
+                    end
+                    return value(...) -- Call original if not running
+                end)
+            end
+        end
+
+        return originalNewIndex(self, key, value)
+    end))
+
+    newindexHookInstalled = true
+    print("[AutoAcceptTrade] __newindex guard installed")
 end
 
 local function setupNotificationListener()
     if not textNotificationRemote or notificationConnection then return end
     
     notificationConnection = textNotificationRemote.OnClientEvent:Connect(function(data)
-        if not running or not isProcessingTrade then return end
+        if not running then return end
         
         if data and data.Text then
+            local text = data.Text:lower()
+            
             -- Check for trade completion
-            if string.find(data.Text:lower(), "trade completed") then
+            if string.find(text, "trade completed") or string.find(text, "trade successful") then
                 print("[AutoAcceptTrade] ✅ Trade completed successfully!")
                 
                 -- Stop clicking
                 stopClickingLoop()
                 isProcessingTrade = false
                 
-                -- Update statistics
-                totalTradesAccepted = totalTradesAccepted + 1
-                currentSessionTrades = currentSessionTrades + 1
-                
                 -- Log trade info
                 if currentTradeData then
                     local duration = tick() - currentTradeData.startTime
-                    print(string.format("[AutoAcceptTrade] Trade from %s completed in %.2f seconds", 
-                        currentTradeData.fromPlayer and currentTradeData.fromPlayer.Name or "Unknown", duration))
+                    print(string.format("[AutoAcceptTrade] Trade completed in %.2f seconds", duration))
                 end
                 
                 -- Clear trade data
                 currentTradeData = nil
                 
-            elseif string.find(data.Text:lower(), "trade cancelled") or 
-                   string.find(data.Text:lower(), "trade expired") or
-                   string.find(data.Text:lower(), "trade declined") then
+            elseif string.find(text, "trade cancelled") or 
+                   string.find(text, "trade expired") or
+                   string.find(text, "trade declined") or
+                   string.find(text, "trade failed") then
                 print("[AutoAcceptTrade] ❌ Trade was cancelled/expired/declined")
                 
                 -- Stop processing
@@ -254,15 +310,21 @@ function AutoAcceptTrade:Init(guiControls)
     
     -- Find remotes
     if not findRemotes() then
+        warn("[AutoAcceptTrade] Failed to find required remotes")
         return false
     end
     
-    -- Setup listeners
-    setupTradeResponseListener()
+    -- Setup listeners (with error handling)
+    local success1 = setupTradeResponseListener()
+    if not success1 then
+        warn("[AutoAcceptTrade] Failed to setup trade response listener")
+    end
+    
     setupNotificationListener()
+    installNewIndexGuard()
     
     print("[AutoAcceptTrade] Initialization complete")
-    return true
+    return success1
 end
 
 function AutoAcceptTrade:Start(config)
@@ -314,28 +376,25 @@ end
 
 function AutoAcceptTrade:Cleanup()
     self:Stop()
-    
-    -- Disconnect all connections
-    if responseConnection and type(responseConnection) == "RBXScriptConnection" then
-        responseConnection:Disconnect()
-    end
-    responseConnection = nil
-    
+
+    -- Disconnect connections
     if notificationConnection then
         notificationConnection:Disconnect()
         notificationConnection = nil
     end
-    
+
     if clickConnection then
         clickConnection:Disconnect()
         clickConnection = nil
     end
-    
-    -- Reset OnClientInvoke if we hooked it
-    if awaitTradeResponseRemote then
-        awaitTradeResponseRemote.OnClientInvoke = nil
+
+    -- Restore original callback
+    if awaitTradeResponseRemote and originalAwaitTradeCB then
+        awaitTradeResponseRemote.OnClientInvoke = originalAwaitTradeCB
+        originalAwaitTradeCB = nil
+        print("[AutoAcceptTrade] Original callback restored")
     end
-    
+
     -- Clear references
     awaitTradeResponseRemote = nil
     textNotificationRemote = nil
@@ -357,7 +416,9 @@ function AutoAcceptTrade:GetStatus()
         clickInterval = CLICK_INTERVAL,
         maxClickAttempts = MAX_CLICK_ATTEMPTS,
         hasCurrentTrade = currentTradeData ~= nil,
-        currentTradeFrom = currentTradeData and currentTradeData.fromPlayer and currentTradeData.fromPlayer.Name or nil
+        currentTradeFrom = currentTradeData and currentTradeData.fromPlayer and currentTradeData.fromPlayer.Name or nil,
+        remoteFound = awaitTradeResponseRemote ~= nil,
+        hookInstalled = newindexHookInstalled
     }
 end
 
@@ -401,9 +462,25 @@ function AutoAcceptTrade:DumpStatus()
     if currentTradeData then
         print("=== Current Trade Data ===")
         print("From:", currentTradeData.fromPlayer and currentTradeData.fromPlayer.Name or "Unknown")
-        print("Item ID:", currentTradeData.item and currentTradeData.item.Id or "Unknown")
-        print("UUID:", currentTradeData.item and currentTradeData.item.UUID or "Unknown")
+        if currentTradeData.item then
+            print("Item ID:", currentTradeData.item.Id or "Unknown")
+            print("UUID:", currentTradeData.item.UUID or "Unknown")
+        end
         print("Duration:", tick() - currentTradeData.startTime, "seconds")
+    end
+end
+
+function AutoAcceptTrade:TestRemoteAccess()
+    print("[AutoAcceptTrade] Testing remote access...")
+    print("  awaitTradeResponseRemote:", awaitTradeResponseRemote and "✓ Found" or "❌ Not found")
+    print("  textNotificationRemote:", textNotificationRemote and "✓ Found" or "❌ Not found")
+    
+    if awaitTradeResponseRemote then
+        local success, callback = pcall(getcallbackvalue, awaitTradeResponseRemote, "OnClientInvoke")
+        print("  getcallbackvalue:", success and "✓ Success" or "❌ Failed")
+        if success then
+            print("  callback type:", typeof(callback))
+        end
     end
 end
 
