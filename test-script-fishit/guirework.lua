@@ -363,10 +363,10 @@ WindUI:AddTheme({
 
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
-    Title         = "Noctris",
+    Title         = "Noctis",
     Icon          = "rbxassetid://123156553209294",
     Author        = "Fish It",
-    Folder        = "NoctrisHub",
+    Folder        = "NoctisHub",
     Size          = UDim2.fromOffset(250, 250),
     Transparent   = true,
     Theme         = "Dark",
