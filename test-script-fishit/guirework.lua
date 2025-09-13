@@ -1504,27 +1504,41 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
             -- Load modul kalau belum ada
             if not autoAcceptTradeFeature then
                 autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade", {
-                    -- kamu bisa kirim nilai konfigurasi kalau mau override:
-                    -- ClicksPerSecond = 18,
-                    -- MaxSpamSeconds  = 6,
-                    -- JitterPixels    = 3,
+                    DebugPrint = false,  -- bisa diubah ke true untuk debug
+                    ClicksPerSecond = 18,
+                    EdgePaddingFrac = 0.05,  -- padding kecil untuk akurasi
                 })
             end
 
-            -- Start listening & spam GUI “Yes” saat prompt muncul
+            -- Init kalau belum (untuk dynamic version)
+            if autoAcceptTradeFeature and autoAcceptTradeFeature.Init then
+                autoAcceptTradeFeature:Init()
+            end
+
+            -- Start listening & spam GUI "Yes" saat prompt muncul
             if autoAcceptTradeFeature and autoAcceptTradeFeature.Start then
-                autoAcceptTradeFeature:Start()
-                WindUI:Notify({
-                    Title   = "Auto Accept",
-                    Content = "Listening… akan spam Yes saat trade prompt muncul",
-                    Icon    = "check",
-                    Duration = 2
-                })
+                local success = autoAcceptTradeFeature:Start()
+                if success then
+                    WindUI:Notify({
+                        Title   = "Auto Accept",
+                        Content = "Listening… akan spam Yes saat trade prompt muncul",
+                        Icon    = "check",
+                        Duration = 2
+                    })
+                else
+                    autogiftacc_tgl:Set(false)
+                    WindUI:Notify({
+                        Title   = "Failed",
+                        Content = "Gagal start Auto Accept (mungkin sudah running)",
+                        Icon    = "x",
+                        Duration = 3
+                    })
+                end
             else
                 autogiftacc_tgl:Set(false)
                 WindUI:Notify({
                     Title   = "Failed",
-                    Content = "Tidak bisa start AutoAcceptTrade",
+                    Content = "Modul AutoAcceptTrade tidak valid",
                     Icon    = "x",
                     Duration = 3
                 })
@@ -1540,7 +1554,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
                 })
             end
         end
-    end
+    end,
 })
 
 --- === Shop === --- 
