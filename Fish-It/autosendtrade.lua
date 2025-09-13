@@ -124,31 +124,28 @@ end
 
 local function shouldTradeItem(entry, category)
     if not entry then return false end
-    
-    local itemId = entry.Id or entry.id
+
+    -- id fleksibel: Id/id/FishId/ItemId
+    local itemId = entry.Id or entry.id or entry.FishId or entry.ItemId
     if not itemId then return false end
-    
+
     if category == "Fishes" then
-        -- Check if fish should be traded based on tier
         local fishData = fishDataCache[itemId]
         if not fishData then return false end
-        
-        local tier = fishData.Tier
-        if not tier then return false end
-        
-        return selectedTiers[tier] == true
-        
+
+        local tierNum = tonumber(fishData.Tier) or fishData.Tier
+        local tierInfo = tierDataCache[tierNum]
+        local tierName = tierInfo and tierInfo.Name
+
+        -- match by angka atau nama (karena SetSelectedItems simpan dua-duanya)
+        return (tierNum and selectedTiers[tierNum]) or (tierName and selectedTiers[tierName]) or false
+
     elseif category == "Items" then
-        -- Check if item should be traded (currently only Enchant Stone)
         local itemData = itemDataCache[itemId]
         if not itemData then return false end
-        
         local itemName = itemData.Name
-        if not itemName then return false end
-        
-        return selectedItems[itemName] == true
+        return itemName and selectedItems[itemName] == true
     end
-    
     return false
 end
 
@@ -332,25 +329,19 @@ function AutoSendTrade:Init(guiControls)
     end)
     
     -- Populate GUI dropdown if provided
-    if guiControls and guiControls.itemDropdown then
-        local options = {}
-        
-        -- Add tier names for fish
-        for tierNum = 1, 7 do
-            if tierDataCache[tierNum] then
-                table.insert(options, tierDataCache[tierNum].Name)
-            end
-        end
-        
-        -- Add known items (Enchant Stone)
-        table.insert(options, "Enchant Stone")
-        
-        -- Reload dropdown
-        pcall(function()
-            guiControls.itemDropdown:Reload(options)
-        end)
+    -- Populate GUI dropdown if provided
+if guiControls and guiControls.itemDropdown then
+    local options = {}
+    -- ambil semua tier dari cache, sort by Tier
+    local tiersArr = {}
+    for _, info in pairs(tierDataCache) do table.insert(tiersArr, info) end
+    table.sort(tiersArr, function(a,b) return (a.Tier or 0) < (b.Tier or 0) end)
+    for _, info in ipairs(tiersArr) do
+        table.insert(options, info.Name)
     end
-    
+    table.insert(options, "Enchant Stone")
+    pcall(function() guiControls.itemDropdown:Reload(options) end)
+end 
     return true
 end
 
@@ -422,56 +413,77 @@ end
 
 -- === Setters ===
 
+-- helper kecil buat ambil string dari opsi dropdown apa pun
+local function _optToString(v)
+    if type(v) == "string" then return v end
+    if type(v) == "number" then return tostring(v) end
+    if type(v) == "table" then
+        return v.Value or v.value or v.Name or v.name or v[1] or v.Selected or v.selection
+    end
+    return nil
+end
+
 function AutoSendTrade:SetSelectedItems(itemInput)
-    if not itemInput then return false end
-    
-    -- Clear current selection
+    -- bersihin dulu
     table.clear(selectedTiers)
     table.clear(selectedItems)
-    
-    -- Handle both array and set formats
-    if type(itemInput) == "table" then
-        -- If it's an array
+
+    local function addByName(name)
+        if not name then return end
+        name = tostring(name):gsub("^%s+",""):gsub("%s+$","") -- trim
+
+        -- cocokkan ke tier by name/number
+        for tierNum, tierInfo in pairs(tierDataCache) do
+            if tierInfo and (tierInfo.Name == name or tostring(tierNum) == name) then
+                -- simpan dua kunci: angka & nama → bikin shouldTradeItem anti-miss
+                selectedTiers[tierNum] = true
+                selectedTiers[tierInfo.Name] = true
+                return
+            end
+        end
+
+        -- item biasa
+        if name == "Enchant Stone" then
+            selectedItems[name] = true
+        end
+    end
+
+    local t = type(itemInput)
+    if t == "string" or t == "number" then
+        addByName(itemInput)
+    elseif t == "table" then
         if #itemInput > 0 then
-            for _, itemName in ipairs(itemInput) do
-                -- Check if it's a tier name
-                for tierNum, tierInfo in pairs(tierDataCache) do
-                    if tierInfo.Name == itemName then
-                        selectedTiers[tierNum] = true
-                        break
-                    end
-                end
-                
-                -- Check if it's an item name
-                if itemName == "Enchant Stone" then
-                    selectedItems[itemName] = true
-                end
+            for _, v in ipairs(itemInput) do
+                addByName(_optToString(v))
             end
         else
-            -- If it's a set/dict format
-            for itemName, enabled in pairs(itemInput) do
-                if enabled then
-                    -- Check if it's a tier name
-                    for tierNum, tierInfo in pairs(tierDataCache) do
-                        if tierInfo.Name == itemName then
-                            selectedTiers[tierNum] = true
-                            break
-                        end
-                    end
-                    
-                    -- Check if it's an item name
-                    if itemName == "Enchant Stone" then
-                        selectedItems[itemName] = true
-                    end
+            for k, v in pairs(itemInput) do
+                -- dukung format set {["Legendary"]=true} atau { {Value="Legendary"}, ... }
+                if type(k) ~= "number" and v then
+                    addByName(_optToString(k))
+                else
+                    addByName(_optToString(v))
                 end
             end
         end
     end
-    
-    print("[AutoSendTrade] Selected tiers:", selectedTiers)
-    print("[AutoSendTrade] Selected items:", selectedItems)
+
+    -- log nama yang kepilih biar gampang ngecek
+    local pickedTierNames = {}
+    for k, enabled in pairs(selectedTiers) do
+        if enabled and type(k) == "number" and tierDataCache[k] then
+            table.insert(pickedTierNames, tierDataCache[k].Name)
+        end
+    end
+    print("[AutoSendTrade] Selected Tiers:", table.concat(pickedTierNames, ", "))
+    local pickedItems = {}
+    for name, enabled in pairs(selectedItems) do
+        if enabled then table.insert(pickedItems, name) end
+    end
+    print("[AutoSendTrade] Selected Items:", table.concat(pickedItems, ", "))
     return true
 end
+
 
 function AutoSendTrade:SetSelectedPlayers(playerInput)
     if not playerInput then return false end
