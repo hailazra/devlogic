@@ -8,7 +8,7 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
 -- Dependencies
-local InventoryWatcher = loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
+local InventoryWatcher = _G.InventoryWatcher or loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
 
 -- State
 local running = false
@@ -573,9 +573,17 @@ function AutoSendTrade:GetQueueSize()
     return #tradeQueue
 end
 
--- Alias method untuk kompatibilitas GUI
+-- Alias methods untuk kompatibilitas GUI pattern yang berbeda
 function AutoSendTrade:SetDesiredItemsByNames(itemInput)
     return self:SetSelectedItems(itemInput)
+end
+
+function AutoSendTrade:SetTarget(playerName)
+    return self:SetSelectedPlayers(playerName)
+end
+
+function AutoSendTrade:RefreshPlayerList()
+    return self:GetOnlinePlayers()
 end
 
 return AutoSendTrade
