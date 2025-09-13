@@ -8,7 +8,7 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
 -- Dependencies
-local InventoryWatcher = _G.InventoryWatcher or require(script.Parent["inventdetectfishit"])
+local InventoryWatcher = _G.InventoryWatcher or loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
 
 -- State
 local running = false
