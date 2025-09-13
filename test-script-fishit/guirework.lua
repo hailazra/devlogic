@@ -11,12 +11,72 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
-local EnchantFolder = ReplicatedStorage.Enchants
-local BaitFolder = ReplicatedStorage.Baits
-local RodFolder = ReplicatedStorage.Items
-local WeatherFolder = ReplicatedStorage.Events
-local EventFolder = ReplicatedStorage.Events
-local BoatFolder = ReplicatedStorage.Boats
+local EnchantModule = ReplicatedStorage.Enchants
+local BaitModule = ReplicatedStorage.Baits
+local ItemsModule = ReplicatedStorage.Items
+local WeatherModule = ReplicatedStorage.Events
+local BoatModule = ReplicatedStorage.Boats
+
+--- === HELPERS FOR DROPDOWN BY REAL DATA GAME === ---
+--- Enchant
+local function getEnchantName()
+    local enchantName = {}
+    for _, enchant in pairs(EnchantModule:GetChildren()) do
+        if enchant:IsA("ModuleScript") then
+            table.insert(enchantName, enchant.Name)
+        end
+    end
+    return enchantName
+end
+
+--- Bait
+local function getBaitNames()
+    local baitName = {}
+    
+    for _, item in pairs(BaitModule:GetChildren()) do
+        if item:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(item)
+            end)
+            
+            if success and moduleData then
+                if moduleData.Data and moduleData.Data.Type == "Baits" then
+                    if moduleData.Price then
+                        table.insert(baitName, item.Name)
+                    end
+                end
+            end
+        end
+    end
+    
+    return baitName
+end
+
+--- Rod
+local function getFishingRodNames()
+    local rodNames = {}
+    local ItemsFolder = ReplicatedStorage.Items
+    
+    for _, item in pairs(ItemsModule:GetChildren()) do
+        if item:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(item)
+            end)
+            
+            if success and moduleData and moduleData.Data then
+                -- Gabungin semua kondisi jadi 1 line
+                if moduleData.Data.Type == "Fishing Rods" and moduleData.Price and moduleData.Data.Name then
+                    table.insert(rodNames, moduleData.Data.Name)
+                end
+            end
+        end
+    end
+    
+    table.sort(rodNames)
+    return rodNames
+end
+
+local listRod = getFishingRodNames()
 
 -- Make global for features to access
 _G.GameServices = {
@@ -984,16 +1044,6 @@ local autoenchantrod_sec = TabAutomation:Section({
     TextSize = 17, -- Default Size
 })
 
-local function getEnchantName()
-    local enchantName = {}
-    for _, enchant in pairs(EnchantFolder:GetChildren()) do
-        if enchant:IsA("ModuleScript") then
-            table.insert(enchantName, enchant.Name)
-        end
-    end
-    return enchantName
-end
-
 local autoEnchantFeature = nil
 local selectedEnchants   = {}
 local enchantName = getEnchantName()
@@ -1318,20 +1368,7 @@ local selectedRodsSet = {} -- State untuk menyimpan pilihan user
 
 local shoprod_ddm = shoprod_sec:Dropdown({
     Title = "Select Rod",
-    Values = {
-        "Luck Rod",
-        "Carbon Rod", 
-        "Grass Rod",
-        "Demascus Rod",
-        "Ice Rod",
-        "Lucky Rod",
-        "Midnight Rod",
-        "Steampunk Rod",
-        "Chrome Rod",
-        "Astral Rod",
-        "Ares Rod",
-        "Angler Rod"
-    },
+    Values = listRod,
     Value = {}, -- Start with empty selection
     Multi = true,
     AllowNone = true,
@@ -1479,28 +1516,6 @@ local shopbait_sec = TabShop:Section({
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
-
-local function getBaitNames()
-    local baitName = {}
-    
-    for _, item in pairs(BaitFolder:GetChildren()) do
-        if item:IsA("ModuleScript") then
-            local success, moduleData = pcall(function()
-                return require(item)
-            end)
-            
-            if success and moduleData then
-                if moduleData.Data and moduleData.Data.Type == "Baits" then
-                    if moduleData.Price then
-                        table.insert(baitName, item.Name)
-                    end
-                end
-            end
-        end
-    end
-    
-    return baitName
-end
 
 local autobuybaitFeature = nil
 local selectedBaitsSet = {}
