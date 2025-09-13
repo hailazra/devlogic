@@ -137,10 +137,37 @@ local function getTierNames()
     return tierNames
 end
 
-local listRod = getFishingRodNames()
-local weatherName = getWeatherNames()
-local eventNames = getEventNames()
-local rarityName = getTierNames()
+--- Fish List 
+local function getFishNames()
+    local fishNames = {}
+    
+    for _, item in pairs(ItemsModule:GetChildren()) do
+        if item:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(item)
+            end)
+            
+            if success and moduleData then
+                -- Check apakah Type = "Fishes"
+                if moduleData.Data and moduleData.Data.Type == "Fishes" then
+                    -- Ambil nama dari Data.Name (bukan nama ModuleScript)
+                    if moduleData.Data.Name then
+                        table.insert(fishNames, moduleData.Data.Name)
+                    end
+                end
+            end
+        end
+    end
+    
+    table.sort(fishNames)
+    return fishNames
+end
+
+local listRod       = getFishingRodNames()
+local weatherName   = getWeatherNames()
+local eventNames    = getEventNames()
+local rarityName    = getTierNames()
+local fishName      = getFishNames()
 
 -- Make global for features to access
 _G.GameServices = {
@@ -1246,8 +1273,8 @@ local currentTargetPlayer = nil
 
 -- Dropdown untuk pilih items & fish tiers (Multi)
 local tradeitem_ddm = autotrade_sec:Dropdown({
-    Title = "Select Items & Fish Tiers",
-    Values = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common", "Enchant Stone" }, -- fallback
+    Title = "Select Fish",
+    Values = fishName, -- fallback
     Value = {},
     Multi = true,
     AllowNone = true,
