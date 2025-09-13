@@ -1108,7 +1108,7 @@ local selectedTradePlayers = {}
 
 local tradeplayer_ddm = autotrade_sec:Dropdown({
     Title = "Select Target Players", 
-    Values = {},
+    Values = listPlayers(true),
     Multi = true,
     AllowNone = true,
     Callback = function(selectedPlayers)
@@ -1121,7 +1121,7 @@ local tradeplayer_ddm = autotrade_sec:Dropdown({
 
 local tradeitem_ddm = autotrade_sec:Dropdown({
     Title = "Select Items & Fish Tiers",
-    Values = {}, -- akan di-populate otomatis
+    Values = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common", "Enchant Stone"}, -- akan di-populate otomatis
     Multi = true,
     AllowNone = true,
     Callback = function(selectedItems)
