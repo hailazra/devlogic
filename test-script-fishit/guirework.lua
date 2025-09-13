@@ -106,8 +106,8 @@ local function getEventNames()
             end)
             
             if success and moduleData then
-                if moduleData.Coordinates and moduleData.Data.Name then
-                    table.insert(eventNames, moduleData.Data.Name)
+                if moduleData.Coordinates and moduleData.Name then
+                    table.insert(eventNames, moduleData.Name)
                 end
             end
         end
