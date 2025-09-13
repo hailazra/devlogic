@@ -55,8 +55,6 @@ end
 --- Rod
 local function getFishingRodNames()
     local rodNames = {}
-    local ItemsFolder = ReplicatedStorage.Items
-    
     for _, item in pairs(ItemsModule:GetChildren()) do
         if item:IsA("ModuleScript") then
             local success, moduleData = pcall(function()
@@ -76,7 +74,52 @@ local function getFishingRodNames()
     return rodNames
 end
 
+--- Weather (Buyable)
+local function getWeatherNames()
+    local weatherName = {}
+    for _, weather in pairs(WeatherModule:GetChildren()) do
+        if weather:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(weather)
+            end)
+            
+            if success and moduleData then 
+                if moduleData.WeatherMachine == true and moduleData.WeatherMachinePrice then
+                    table.insert(weatherName, weather.Name)
+                end
+            end
+        end
+    end
+    
+    table.sort(weatherName)
+    return weatherName
+end
+
+--- Weather (Event)
+local function getEventNames()
+    local eventNames = {}
+    
+    for _, event in pairs(WeatherModule:GetChildren()) do
+        if event:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(event)
+            end)
+            
+            if success and moduleData then
+                if moduleData.Coordinates and moduleData.Data.Name then
+                    table.insert(eventNames, moduleData.Data.Name)
+                end
+            end
+        end
+    end
+    
+    table.sort(eventNames)
+    return eventNames
+end
+
 local listRod = getFishingRodNames()
+local weatherName = getWeatherNames()
+local eventNames = getEventNames()
 
 -- Make global for features to access
 _G.GameServices = {
@@ -819,20 +862,10 @@ local eventtele_sec = TabMain:Section({
 local eventteleFeature     = nil
 local selectedEventsArray = {}
 
-local AVAIL_EVENT = {
-    "Shark Hunt", "Worm Hunt", "Ghost Shark Hunt", "Admin - Blackhole", "Admin - Ghost Worm", "Admin - Meteor Rain",
-    "Admin - Shocked" 
-}
-
-local AVAIL_EVENT_OPTIONS = {}
-for _, event in ipairs(AVAIL_EVENT) do
-    table.insert(AVAIL_EVENT_OPTIONS, event)
-end
-
 local eventtele_ddm = eventtele_sec:Dropdown({
     Title = "Select Event",
     Desc  = "Will priotitize selected Event",
-    Values = AVAIL_EVENT_OPTIONS,
+    Values = eventNames,
     Value = {},
     Multi = true,
     AllowNone = true,
@@ -1675,30 +1708,8 @@ local shopweather_sec = TabShop:Section({
     TextSize = 17, -- Default Size
 })
 
-local function getWeatherNames()
-    local weatherName = {}
-    
-    for _, weather in pairs(WeatherFolder:GetChildren()) do
-        if weather:IsA("ModuleScript") then
-            local success, moduleData = pcall(function()
-                return require(weather)
-            end)
-            
-            if success and moduleData then 
-                if moduleData.WeatherMachine == true and moduleData.WeatherMachinePrice then
-                    table.insert(weatherName, weather.Name)
-                end
-            end
-        end
-    end
-    
-    return weatherName
-end
-
 local weatherFeature          = nil
 local selectedWeatherSet      = {} 
-local weatherName = getWeatherNames()
-
 
 -- Multi dropdown (Values diisi setelah modul diload)
 local shopweather_ddm = shopweather_sec:Dropdown({
