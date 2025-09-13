@@ -29,7 +29,7 @@ local CONFIG = {
     ForceCoords      = Vector2.new(277, 137),
     ForceEveryClick  = true,      -- true = selalu pakai ForceCoords
 
-    StopOnTextMatches = { "trade complete", "trade completed", "trade successful" },
+    StopOnTextMatches = { "trade completed!", "Trade completed!", "trade successful" },
     StopOnFailMatches = { "trade cancelled", "trade canceled", "trade declined", "trade expired", "trade failed" },
 }
 
