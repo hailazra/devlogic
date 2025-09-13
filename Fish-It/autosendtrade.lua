@@ -20,7 +20,7 @@ local selectedTiers = {} -- set: { [tierNumber] = true } for fish
 local selectedItems = {} -- set: { ["Enchant Stone"] = true } for items
 local selectedPlayers = {} -- set: { [playerName] = true }
 local TICK_STEP = 0.5 -- throttle interval
-local TRADE_DELAY = 4 -- delay between trade requests
+local TRADE_DELAY = 1.0 -- delay between trade requests
 
 -- Cache
 local fishDataCache = {} -- { [fishId] = fishData }
@@ -195,19 +195,13 @@ local function processInventory()
     end
     if not hasTargets then return end
     
-    -- Process Fishes
+    -- Process Fishes - menggunakan cara yang sama persis dengan autofavoritefish
     local fishes = inventoryWatcher:getSnapshotTyped("Fishes")
     if fishes and #fishes > 0 then
         for _, fishEntry in ipairs(fishes) do
             if shouldTradeItem(fishEntry, "Fishes") then
                 local uuid = fishEntry.UUID or fishEntry.Uuid or fishEntry.uuid
                 if uuid then
-                    local fishId = fishEntry.Id or fishEntry.id
-                    local fishData = fishDataCache[fishId]
-                    local fishName = fishData and fishData.Name or "Unknown Fish"
-                    local tierInfo = fishData and tierDataCache[fishData.Tier]
-                    local tierName = tierInfo and tierInfo.Name or "Unknown Tier"
-                    
                     -- Check if already in queue
                     local alreadyQueued = false
                     for _, queueItem in ipairs(tradeQueue) do
@@ -218,6 +212,12 @@ local function processInventory()
                     end
                     
                     if not alreadyQueued then
+                        local fishId = fishEntry.Id or fishEntry.id
+                        local fishData = fishDataCache[fishId]
+                        local fishName = fishData and fishData.Name or "Unknown Fish"
+                        local tierInfo = fishData and tierDataCache[fishData.Tier]
+                        local tierName = tierInfo and tierInfo.Name or "Unknown Tier"
+                        
                         local targetPlayerId = getRandomTargetPlayerId()
                         if targetPlayerId then
                             table.insert(tradeQueue, {
@@ -227,7 +227,7 @@ local function processInventory()
                                 tierName = tierName,
                                 category = "Fishes"
                             })
-                            print("[AutoSendTrade] Queued fish:", fishName, "(" .. tierName .. ")")
+                            print("[AutoSendTrade] Queued fish:", fishName, "(" .. tierName .. ")", uuid)
                         end
                     end
                 end
@@ -242,10 +242,6 @@ local function processInventory()
             if shouldTradeItem(itemEntry, "Items") then
                 local uuid = itemEntry.UUID or itemEntry.Uuid or itemEntry.uuid
                 if uuid then
-                    local itemId = itemEntry.Id or itemEntry.id
-                    local itemData = itemDataCache[itemId]
-                    local itemName = itemData and itemData.Name or "Unknown Item"
-                    
                     -- Check if already in queue
                     local alreadyQueued = false
                     for _, queueItem in ipairs(tradeQueue) do
@@ -256,6 +252,10 @@ local function processInventory()
                     end
                     
                     if not alreadyQueued then
+                        local itemId = itemEntry.Id or itemEntry.id
+                        local itemData = itemDataCache[itemId]
+                        local itemName = itemData and itemData.Name or "Unknown Item"
+                        
                         local targetPlayerId = getRandomTargetPlayerId()
                         if targetPlayerId then
                             table.insert(tradeQueue, {
@@ -265,7 +265,7 @@ local function processInventory()
                                 tierName = nil,
                                 category = "Items"
                             })
-                            print("[AutoSendTrade] Queued item:", itemName)
+                            print("[AutoSendTrade] Queued item:", itemName, uuid)
                         end
                     end
                 end
