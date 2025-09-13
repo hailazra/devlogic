@@ -1301,6 +1301,25 @@ local autoTradeFeature = nil
 local selectedTradeItems = {}
 local selectedTargetPlayers = {}
 
+-- Dropdown untuk pilih target players (Multi - bisa kirim ke beberapa player)
+local tradeplayer_ddm = autotrade_sec:Dropdown({
+    Title = "Select Target Players",
+    Desc = "Choose players to send trades to",
+    Values = listPlayers(true),
+    Value = {},
+    Multi = true, -- Ubah jadi Multi
+    AllowNone = true,
+    Callback = function(options)
+        selectedTargetPlayers = options or {}
+        print("[AutoSendTrade] Selected players:", #selectedTargetPlayers, "players")
+        
+        -- Update feature jika sudah loaded
+        if autoTradeFeature and autoTradeFeature.SetSelectedPlayers then
+            autoTradeFeature:SetSelectedPlayers(selectedTargetPlayers)
+        end
+    end
+})
+
 -- Dropdown untuk pilih fish (Multi)
 local tradeitem_ddm = autotrade_sec:Dropdown({
     Title = "Select Fish",
@@ -1320,21 +1339,22 @@ local tradeitem_ddm = autotrade_sec:Dropdown({
     end
 })
 
--- Dropdown untuk pilih target players (Multi - bisa kirim ke beberapa player)
-local tradeplayer_ddm = autotrade_sec:Dropdown({
-    Title = "Select Target Players",
-    Desc = "Choose players to send trades to",
-    Values = listPlayers(true),
-    Value = {},
-    Multi = true, -- Ubah jadi Multi
-    AllowNone = true,
-    Callback = function(options)
-        selectedTargetPlayers = options or {}
-        print("[AutoSendTrade] Selected players:", #selectedTargetPlayers, "players")
+-- Input untuk trade delay
+local tradedelay_in = autotrade_sec:Input({
+    Title = "Trade Delay (seconds)",
+    Desc = "Delay between trades",
+    Value = "5",
+    Placeholder = "5",
+    Numeric = true,
+    Callback = function(value)
+        local delay = tonumber(value) or 5.0
+        if delay < 1.0 then delay = 1.0 end
+        
+        print("[AutoSendTrade] Trade delay set to:", delay, "seconds")
         
         -- Update feature jika sudah loaded
-        if autoTradeFeature and autoTradeFeature.SetSelectedPlayers then
-            autoTradeFeature:SetSelectedPlayers(selectedTargetPlayers)
+        if autoTradeFeature and autoTradeFeature.SetTradeDelay then
+            autoTradeFeature:SetTradeDelay(delay)
         end
     end
 })
@@ -1356,26 +1376,6 @@ local traderefresh_btn = autotrade_sec:Button({
             Icon = "users", 
             Duration = 2 
         })
-    end
-})
-
--- Input untuk trade delay
-local tradedelay_in = autotrade_sec:Input({
-    Title = "Trade Delay (seconds)",
-    Desc = "Delay between trades",
-    Value = "5",
-    Placeholder = "5",
-    Numeric = true,
-    Callback = function(value)
-        local delay = tonumber(value) or 5.0
-        if delay < 1.0 then delay = 1.0 end
-        
-        print("[AutoSendTrade] Trade delay set to:", delay, "seconds")
-        
-        -- Update feature jika sudah loaded
-        if autoTradeFeature and autoTradeFeature.SetTradeDelay then
-            autoTradeFeature:SetTradeDelay(delay)
-        end
     end
 })
 
