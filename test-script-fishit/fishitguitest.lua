@@ -11,76 +11,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
-local EnchantModule = ReplicatedStorage.Enchants
-local BaitModule = ReplicatedStorage.Baits
-local ItemsModule = ReplicatedStorage.Items
-local WeatherModule = ReplicatedStorage.Events
-local BoatModule = ReplicatedStorage.Boats
-local TierModule = ReplicatedStorage.Tiers
-
--- === DROPDOWN HELPERS FOR GAME SOURCE === --
--- Enchant List
-local function getEnchantName()
-    local enchantName = {}
-    for _, enchant in pairs(EnchantModule:GetChildren()) do
-        if enchant:IsA("ModuleScript") then
-            table.insert(enchantName, enchant.Name)
-        end
-    end
-    return enchantName
-end
-
--- Bait List
-local function getBaitNames()
-    local baitName = {}
-    
-    for _, item in pairs(BaitModule:GetChildren()) do
-        if item:IsA("ModuleScript") then
-            local success, moduleData = pcall(function()
-                return require(item)
-            end)
-            
-            if success and moduleData then
-                if moduleData.Data and moduleData.Data.Type == "Baits" then
-                    if moduleData.Price then
-                        table.insert(baitName, item.Name)
-                    end
-                end
-            end
-        end
-    end
-    
-    return baitName
-end
-
--- Rod List
-local function getFishingRodNames()
-    local rodNames = {}
-    for _, item in pairs(ItemsModule:GetChildren()) do
-        if item:IsA("ModuleScript") then
-            local success, moduleData = pcall(function()
-                return require(item)
-            end)
-            
-            if success and moduleData then
-                if moduleData.Data and moduleData.Data.Type == "Fishing Rods" then
-                    if moduleData.Price then
-                         if moduleData.Data.Name then
-                        table.insert(rodNames, moduleData.Data.Name)
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Sort A-Z
-    table.sort(rodNames)
-    return rodNames
-end
-
-local baitName = getBaitNames()
-local listRod = getFishingRodNames()
-
+local EnchantFolder = ReplicatedStorage.Enchants
+local BaitFolder = ReplicatedStorage.Baits
+local RodFolder = ReplicatedStorage.Items
+local WeatherFolder = ReplicatedStorage.Events
+local EventFolder = ReplicatedStorage.Events
+local BoatFolder = ReplicatedStorage.Boats
 
 -- Make global for features to access
 _G.GameServices = {
@@ -111,18 +47,21 @@ local FeatureManager = {}
 FeatureManager.LoadedFeatures = {}
 
 local FEATURE_URLS = {
-    AutoFish           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/test-script-fishit/autofishv2.lua", 
+    AutoFish           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofish.lua", 
     AutoSellFish       = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosellfish.lua",
     AutoTeleportIsland = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportisland.lua",
-    FishWebhook        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/fishwebhook.lua",
+    FishWebhook        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/fishwebhook.lua",
     AutoBuyWeather     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyweather.lua",
     AutoBuyBait        = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuybait.lua",
     AutoBuyRod         = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autobuyrod.lua",
-    AutoTeleportEvent  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/test-script-fishit/autoteleporteventv2.lua",
+    AutoTeleportEvent  = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportevent.lua",
     AutoGearOxyRadar   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autogearoxyradar.lua",
     AntiAfk            = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/antiafk.lua", 
     AutoEnchantRod     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoenchantrodv1.lua",
-    AutoFavoriteFish   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofavoritefish.lua" 
+    AutoFavoriteFish   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofavoritefish.lua",
+    AutoTeleportPlayer = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportplayer.lua",
+    BoostFPS           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/boostfps.lua",
+    AutoSendTrade      = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosendtrade.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -145,12 +84,7 @@ function FeatureManager:LoadFeature(featureName, controls)
         local initSuccess = pcall(feature.Init, feature, controls)
         if initSuccess then
             self.LoadedFeatures[featureName] = feature
-            WindUI:Notify({
-                Title = "Success",
-                Content = featureName .. " loaded successfully",
-                Icon = "check",
-                Duration = 2
-            })
+            print(featureName .. "Loaded Successfully!")
             return feature
         end
     end
@@ -177,12 +111,15 @@ local function preloadAllFeatures()
     -- Urutan loading (critical features first)
     local loadOrder = {
         "AntiAfk",           -- Utility first
+        "BoostFPS",
         "AutoFish",          -- Core features
         "AutoSellFish",
         "AutoTeleportIsland",
+        "AutoTeleportPlayer",
         "AutoTeleportEvent",
         "AutoEnchantRod",
         "AutoFavoriteFish",
+        "AutoSendTrade",
         "FishWebhook",       -- Notification features
         "AutoBuyWeather",    -- Shop features
         "AutoBuyBait",
@@ -228,20 +165,37 @@ end
 -- Execute preloading immediately
 task.spawn(preloadAllFeatures)
 
+WindUI:AddTheme({
+    Name        = "StarlessMonoPro",
+    Accent      = "#DDE3F0", -- starlight lembut (bukan putih murni)
+    Dialog      = "#13151A", -- panel
+    Outline     = "#303845", -- border dingin (bukan putih)
+    Text        = "#E9ECF2", -- teks nyaman
+    Placeholder = "#999999", -- hint
+    Background  = "#0A0B0D", -- hampir hitam
+    Button      = "#1E232C", -- tombol idle
+    Icon        = "#a1a1aa", -- ikon sedikit lebih terang
+})
+
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
-    Title         = ".devlogic",
-    Icon          = "rbxassetid://73063950477508",
+    Title         = "ATRES",
+    Icon          = "rbxassetid://123156553209294",
     Author        = "Fish It",
-    Folder        = ".devlogichub",
+    Folder        = "AtresHub",
     Size          = UDim2.fromOffset(250, 250),
+    Transparent   = true,
     Theme         = "Dark",
     Resizable     = false,
-    SideBarWidth  = 120,
+    SideBarWidth  = 150,
     HideSearchBar = true,
 })
 
 WindUI:SetFont("rbxasset://12187373592")
+
+WindUI.TransparencyValue = 0.1  -- 0 = solid, 1 = full tembus
+Window:ToggleTransparency(true)
+
 -- =========================
 -- IMPROVED ICON CONTROLLER (Cobalt-inspired)
 -- =========================
@@ -626,7 +580,7 @@ Window:EditOpenButton({ Enabled = false })
 
 -- Create improved icon controller
 local DevLogicIcon = IconController.new(Window, {
-    image = "rbxassetid://73063950477508",
+    image = "rbxassetid://123156553209294",
     size = Vector2.new(44, 44),
     startPos = UDim2.new(0, 10, 0.5, -22),
 })
@@ -648,7 +602,7 @@ end
 -- =========================
 
 Window:Tag({
-    Title = "v0.0.0",
+    Title = "v0.0.5",
     Color = Color3.fromHex("#000000")
 })
 
@@ -657,19 +611,16 @@ Window:Tag({
     Color = Color3.fromHex("#000000")
 })
 
---========== CHANGELOG & DC LINK==========--
-local changelog = table.concat({
-    "[+] Cancel Fishing",
-    "[/] Auto Fishing (Now much faster)",
-    "[/] Auto Teleport to Event (Fixed detection)",
-    "[/] Webhook Embed",
-    "[/] Small fix for GUI",
+--- === CHANGELOG & DISCORD LINK === ---
+local CHANGELOG = table.concat({
+    "[+] Added Teleport to Player",
+    "[+] Added Boost FPS",
+    "If you find bugs or have suggestions, let us know."
 }, "\n")
-
-local discord = table.concat({
+local DISCORD = table.concat({
     "https://discord.gg/3AzvRJFT3M",
 }, "\n")
-
+    
 --========== TABS ==========
 local TabHome            = Window:Tab({ Title = "Home",           Icon = "house" })
 local TabMain            = Window:Tab({ Title = "Main",           Icon = "gamepad" })
@@ -688,8 +639,8 @@ local info_sec = TabHome:Section({
 })
 
 local info_para = TabHome:Paragraph({
-    Title = "Changelog v0.0.5",
-    Desc = changelog,
+    Title = "Changelog",
+    Desc = CHANGELOG,
     Locked = false,
     Buttons = {
         {
@@ -697,8 +648,8 @@ local info_para = TabHome:Paragraph({
             Title = "Discord",
             Callback = function() 
             if typeof(setclipboard) == "function" then
-                        setclipboard(discord)
-                        WindUI:Notify({ Title = "Copied", Content = "Changelog copied", Icon = "check", Duration = 2 })
+                        setclipboard(DISCORD)
+                        WindUI:Notify({ Title = "Copied", Content = "Disord link copied!", Icon = "check", Duration = 2 })
                     else
                         WindUI:Notify({ Title = "Info", Content = "Clipboard not available", Icon = "info", Duration = 3 })
                     end
@@ -707,61 +658,22 @@ local info_para = TabHome:Paragraph({
     }
 })
 
-local othersec = TabHome:Section({ 
-    Title = "Others",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
---- Anti AFK
-local antiafkFeature = nil
-
-local antiafk_tgl = TabHome:Toggle({
-    Title = "Anti AFK",
-    Default = false,
-    Callback = function(state) 
-   if state then
-      if not antiafkFeature then
-        antiafkFeature = FeatureManager:GetFeature("AntiAfk")
-      end
-      if antiafkFeature and antiafkFeature.Start then
-        antiafkFeature:Start()
-      else
-        antiafk_tgl:Set(false)
-        WindUI:Notify({ Title="Failed", Content="Could not start AntiAfk", Icon="x", Duration=3 })
-      end
-    else
-      if antiafkFeature and antiafkFeature.Stop then antiafkFeature:Stop() end
-    end
-  end
-})
-
---- Boost FPS
-local boostfps_btn = TabHome:Button({
-    Title = "Boost FPS",
-    Desc = "Test Button",
-    Locked = false,
-    Callback = function()
-        print("clicked")
-    end
-})
-
 --- === Main === ---
 --- Auto Fish
 local autofish_sec = TabMain:Section({ 
     Title = "Fishing",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
 
 local autoFishFeature = nil
-local currentFishingMode = "Perfect"
+local currentFishingMode = "Fast"
 
 local autofishmode_dd = autofish_sec:Dropdown({
     Title = "Fishing Mode",
-    Values = { "Perfect", "Normal" },
-    Value = "Perfect",
+    Desc  = "Select Fishing Mode",
+    Values = { "Fast", "Slow" },
+    Value = "Fast",
     Callback = function(option) 
         currentFishingMode = option
         print("[GUI] Fishing mode changed to:", option)
@@ -783,7 +695,7 @@ local autofish_tgl = autofish_sec:Toggle({
         if state then
             -- Load feature if not already loaded
             if not autoFishFeature then
-                autoFishFeature = FeatureManager:GetFeature("AutoFish", {
+                autoFishFeature = FeatureManager:LoadFeature("AutoFish", {
                     modeDropdown = autofishmode_dd,
                     toggle = autofish_tgl
                 })
@@ -810,12 +722,38 @@ local autofish_tgl = autofish_sec:Toggle({
     end
 })
 
+--- Cancel Fishing/Fix Stuck
+local CancelFishingEvent = game:GetService("ReplicatedStorage")
+    .Packages._Index["sleitnick_net@0.2.0"]
+    .net["RF/CancelFishingInputs"]
+
+local cancelautofish_btn = autofish_sec:Button({
+    Title = "Cancel Fishing",
+    Desc = "Fix Stuck when Fishing",
+    Locked = false,
+    Callback = function()
+        if CancelFishingEvent and CancelFishingEvent.InvokeServer then
+            local success, result = pcall(function()
+                return CancelFishingEvent:InvokeServer()
+            end)
+
+            if success then
+                print("[CancelFishingInputs] Fixed", result)
+            else
+                warn("[CancelFishingInputs] Error, Report to Dev", result)
+            end
+        else
+            warn("[CancelFishingInputs] Report this bug to Dev")
+        end
+    end
+})
+
+
 --- Event Teleport
 local eventtele_sec = TabMain:Section({ 
-    Title = "Teleport to Event",
+    Title = "Event Teleport",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
 
 local eventteleFeature     = nil
@@ -833,6 +771,7 @@ end
 
 local eventtele_ddm = eventtele_sec:Dropdown({
     Title = "Select Event",
+    Desc  = "Will priotitize selected Event",
     Values = AVAIL_EVENT_OPTIONS,
     Value = {},
     Multi = true,
@@ -878,13 +817,12 @@ local favfish_sec = TabBackpack:Section({
     Title = "Favorite Fish",
     TextXAlignment = "Left",
     TextSize = 17,
-    Opened = true
 })
 
 local autoFavFishFeature = nil
 local selectedTiers = {}
 
-
+-- Dropdown: start dengan tier default, akan di-reload saat feature dimuat
 local favfish_ddm = favfish_sec:Dropdown({
     Title     = "Select Rarity",
     Values    = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common" }, -- default fallback
@@ -975,7 +913,6 @@ local sellfish_sec = TabBackpack:Section({
     Title = "Sell Fish",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
 
 local sellfishFeature        = nil
@@ -984,6 +921,7 @@ local currentSellLimit       = 0
 
 local sellfish_dd = sellfish_sec:Dropdown({
     Title = "Select Rarity",
+    Desc  = "Rarity Threshold",
     Values = { "Secret", "Mythic", "Legendary" },
     Value = "Legendary",
     Callback = function(option)
@@ -1040,19 +978,27 @@ local sellfish_tgl = sellfish_sec:Toggle({
 
 --- === AUTOMATION === ---
 --- Auto Enchant Rod
-local enchant_sec = TabAutomation:Section({ 
+local autoenchantrod_sec = TabAutomation:Section({ 
     Title = "Auto Enchant",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
 
+local function getEnchantName()
+    local enchantName = {}
+    for _, enchant in pairs(EnchantFolder:GetChildren()) do
+        if enchant:IsA("ModuleScript") then
+            table.insert(enchantName, enchant.Name)
+        end
+    end
+    return enchantName
+end
 
 local autoEnchantFeature = nil
 local selectedEnchants   = {}
 local enchantName = getEnchantName()
 
-local enchant_ddm = enchant_sec:Dropdown({
+local enchant_ddm = autoenchantrod_sec:Dropdown({
     Title     = "Select Enchants",
     Values    = enchantName,       -- akan diisi saat modul diload
     Value     = {},
@@ -1068,7 +1014,7 @@ local enchant_ddm = enchant_sec:Dropdown({
     end
 })
 
-local enchant_tgl = enchant_sec:Toggle({
+local enchant_tgl = autoenchantrod_sec:Toggle({
     Title   = "Auto Enchant Rod",
     Default = false,
     Callback = function(state)
@@ -1104,7 +1050,7 @@ local enchant_tgl = enchant_sec:Toggle({
                 })
                 WindUI:Notify({
                     Title    = "Tip",
-                    Content  = "Equip an Enchant Stone once so the script captures the UUID.",
+                    Content  = "Place Enhance Stone at slot 3",
                     Icon     = "info",
                     Duration = 4
                 })
@@ -1128,41 +1074,229 @@ local enchant_tgl = enchant_sec:Toggle({
 
 
 --- Auto Gift
-local autogift_sec = TabAutomation:Section({ 
+local autotrade_sec = TabAutomation:Section({ 
     Title = "Auto Gift",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
 
-local autogiftplayer_dd = autogift_sec:Dropdown({
-    Title = "Select Player",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = "Category A",
-    Callback = function(option) 
-        print("Category selected: " .. option) 
+-- helpers for player lists
+local function listPlayers(excludeSelf)
+    local me = LocalPlayer and LocalPlayer.Name
+    local t = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if not excludeSelf or (me and p.Name ~= me) then
+            table.insert(t, p.Name)
+        end
+    end
+    table.sort(t, function(a, b) return a:lower() < b:lower() end)
+    return t
+end
+
+-- normalize apapun yang dikasih Dropdown (string atau table)
+local function normalizeOption(opt)
+    if type(opt) == "string" then return opt end
+    if type(opt) == "table" then
+        return opt.Value or opt.value or opt[1] or opt.Selected or opt.selection
+    end
+    return nil
+end
+
+local function normalizeList(opts)
+    local out = {}
+    local function push(v)
+        if v ~= nil then table.insert(out, tostring(v)) end
+    end
+    if type(opts) == "string" or type(opts) == "number" then
+        push(opts)
+    elseif type(opts) == "table" then
+        if #opts > 0 then
+            for _, v in ipairs(opts) do
+                if type(v) == "table" then
+                    push(v.Value or v.value or v.Name or v.name or v[1] or v.Selected or v.selection)
+                else
+                    push(v)
+                end
+            end
+        else
+            for k, v in pairs(opts) do
+                if type(k) ~= "number" and v then
+                    push(k)
+                else
+                    if type(v) == "table" then
+                        push(v.Value or v.value or v.Name or v.name or v[1] or v.Selected or v.selection)
+                    else
+                        push(v)
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- Auto Send Trade GUI Wiring
+local autoTradeFeature = nil
+local selectedTradeItems = {}
+local currentTargetPlayer = nil
+
+-- Dropdown untuk pilih items & fish tiers (Multi)
+local tradeitem_ddm = autotrade_sec:Dropdown({
+    Title = "Select Items & Fish Tiers",
+    Values = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common", "Enchant Stone" }, -- fallback
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(options)
+        selectedTradeItems = options or {}
+        if autoTradeFeature and autoTradeFeature.SetSelectedItems then
+            -- boleh pass original (robust), atau versi normalized (lebih konsisten)
+            autoTradeFeature:SetSelectedItems(selectedTradeItems)
+        end
+        local show = normalizeList(selectedTradeItems)
+        print("[AutoSendTrade] Selected items:", #show>0 and table.concat(show, ", ") or "(none)")
     end
 })
 
-local autogift_tgl = autogift_sec:Toggle({
-    Title = "Auto Gift Fish",
-    Desc  = "Auto Gift held Fish/Item",
-    Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+-- Dropdown untuk pilih target player (Single)
+local tradeplayer_dd = autotrade_sec:Dropdown({
+    Title = "Select Target Player",
+    Values = listPlayers(true), -- menggunakan helper function Anda
+    Value = "",
+    Callback = function(option)
+        local name = normalizeOption(option) -- menggunakan helper function Anda
+        currentTargetPlayer = name
+        if autoTradeFeature and autoTradeFeature.SetTarget then
+            autoTradeFeature:SetTarget(name)
+        end
+        print("[AutoSendTrade] Selected target player:", name)
     end
 })
 
-local autogiftrefresh_btn = autogift_sec:Button({
+-- Button refresh player list
+local traderefresh_btn = autotrade_sec:Button({
     Title = "Refresh Player List",
     Desc = "",
     Locked = false,
     Callback = function()
-        print("clicked")
+        local names = listPlayers(true)
+        tradeplayer_dd:Refresh(names) -- API resmi WindUI
+        
+        -- Jaga state: kalau current hilang, auto-pick pertama
+        if not table.find(names, currentTargetPlayer) then
+            currentTargetPlayer = names[1]
+            if currentTargetPlayer then
+                tradeplayer_dd:Select(currentTargetPlayer) -- API resmi WindUI
+                if autoTradeFeature and autoTradeFeature.SetTarget then
+                    autoTradeFeature:SetTarget(currentTargetPlayer)
+                end
+            end
+        end
+        
+        WindUI:Notify({ 
+            Title = "Players", 
+            Content = ("Online: %d"):format(#names), 
+            Icon = "users", 
+            Duration = 2 
+        })
     end
 })
 
-local autogiftacc_tgl = autogift_sec:Toggle({
+-- Toggle untuk start/stop auto trade
+local autotrade_tgl = autotrade_sec:Toggle({
+    Title = "Auto Send Trade",
+    Desc = "Automatically send trade requests with selected items",
+    Default = false,
+    Callback = function(state)
+        if state then
+            -- Load feature jika belum ada
+            if not autoTradeFeature then
+                autoTradeFeature = FeatureManager:GetFeature("AutoSendTrade", {
+                    itemDropdown = tradeitem_ddm,
+                    playerDropdown = tradeplayer_dd,
+                    refreshButton = traderefresh_btn
+                })
+                
+                -- Refresh dropdown items setelah feature loaded
+                if autoTradeFeature then
+                    task.spawn(function()
+                        task.wait(0.5)
+                        if autoTradeFeature.GetAvailableItems then
+                            local availableItems = autoTradeFeature:GetAvailableItems()
+                            tradeitem_ddm:Refresh(availableItems)
+                        end
+                    end)
+                end
+            end
+            
+            -- Validasi: pastikan ada items yang dipilih
+            if not selectedTradeItems or #selectedTradeItems == 0 then
+                WindUI:Notify({
+                    Title = "Info",
+                    Content = "Select at least 1 item/tier first",
+                    Icon = "info",
+                    Duration = 3
+                })
+                autotrade_tgl:Set(false)
+                return
+            end
+            
+            -- Fallback: kalau target player nil, coba ambil dari dropdown
+            if (not currentTargetPlayer or currentTargetPlayer == "") then
+                local v = rawget(tradeplayer_dd, "Value")
+                currentTargetPlayer = normalizeOption(v)
+            end
+            
+            -- Validasi: pastikan ada target player
+            if (not currentTargetPlayer or currentTargetPlayer == "") then
+                WindUI:Notify({
+                    Title = "Info",
+                    Content = "Select target player first",
+                    Icon = "info",
+                    Duration = 3
+                })
+                autotrade_tgl:Set(false)
+                return
+            end
+            
+            -- Start auto trade
+            if autoTradeFeature and autoTradeFeature.Start then
+                autoTradeFeature:Start({
+                    tierList = selectedTradeItems,
+                    playerList = { currentTargetPlayer } -- convert single player to array
+                })
+                
+                WindUI:Notify({
+                    Title = "Started",
+                    Content = "Auto Send Trade is now active",
+                    Icon = "check",
+                    Duration = 2
+                })
+            else
+                autotrade_tgl:Set(false)
+                WindUI:Notify({
+                    Title = "Failed",
+                    Content = "Could not start Auto Send Trade",
+                    Icon = "x",
+                    Duration = 3
+                })
+            end
+        else
+            -- Stop auto trade
+            if autoTradeFeature and autoTradeFeature.Stop then
+                autoTradeFeature:Stop()
+                WindUI:Notify({
+                    Title = "Stopped", 
+                    Content = "Auto Send Trade stopped",
+                    Icon = "info",
+                    Duration = 2
+                })
+            end
+        end
+    end
+})
+
+local autogiftacc_tgl = autotrade_sec:Toggle({
     Title = "Auto Accept Gift",
     Desc  = "",
     Default = false,
@@ -1177,7 +1311,6 @@ local shoprod_sec = TabShop:Section({
     Title = "Rod",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
 
 local autobuyrodFeature = nil
@@ -1185,7 +1318,20 @@ local selectedRodsSet = {} -- State untuk menyimpan pilihan user
 
 local shoprod_ddm = shoprod_sec:Dropdown({
     Title = "Select Rod",
-    Values = listRod,
+    Values = {
+        "Luck Rod",
+        "Carbon Rod", 
+        "Grass Rod",
+        "Demascus Rod",
+        "Ice Rod",
+        "Lucky Rod",
+        "Midnight Rod",
+        "Steampunk Rod",
+        "Chrome Rod",
+        "Astral Rod",
+        "Ares Rod",
+        "Angler Rod"
+    },
     Value = {}, -- Start with empty selection
     Multi = true,
     AllowNone = true,
@@ -1212,7 +1358,7 @@ local shoprod_btn = shoprod_sec:Button({
         -- Load feature pada first-time saja
         if not autobuyrodFeature then
             print("[GUI] Loading AutoBuyRod feature...")
-            autobuyrodFeature = FeatureManager:GetFeature("AutoBuyRod", {
+            autobuyrodFeature = FeatureManager:LoadFeature("AutoBuyRod", {
                 rodsDropdown = shoprod_ddm,
                 button = shoprod_btn
             })
@@ -1332,11 +1478,33 @@ local shopbait_sec = TabShop:Section({
     Title = "Baits",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
+
+local function getBaitNames()
+    local baitName = {}
+    
+    for _, item in pairs(BaitFolder:GetChildren()) do
+        if item:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(item)
+            end)
+            
+            if success and moduleData then
+                if moduleData.Data and moduleData.Data.Type == "Baits" then
+                    if moduleData.Price then
+                        table.insert(baitName, item.Name)
+                    end
+                end
+            end
+        end
+    end
+    
+    return baitName
+end
 
 local autobuybaitFeature = nil
 local selectedBaitsSet = {}
+local baitName = getBaitNames()
 
 local shopbait_ddm = shopbait_sec:Dropdown({
     Title = "Select Bait",
@@ -1490,7 +1658,6 @@ local shopweather_sec = TabShop:Section({
     Title = "Weather",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
 
 local function getWeatherNames()
@@ -1597,7 +1764,6 @@ local teleisland_sec = TabTeleport:Section({
     Title = "Islands",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
 
 local autoTeleIslandFeature = nil
@@ -1635,7 +1801,7 @@ local teleisland_btn = teleisland_sec:Button({
     Callback = function()
         -- Muat modul jika belum pernah dimuat
         if not autoTeleIslandFeature then
-            autoTeleIslandFeature = FeatureManager:GetFeature("AutoTeleportIsland", {
+            autoTeleIslandFeature = FeatureManager:LoadFeature("AutoTeleportIsland", {
                 dropdown = teleisland_dd,
                 button   = teleisland_btn
             })
@@ -1659,20 +1825,28 @@ local teleisland_btn = teleisland_sec:Button({
     end
 })
 
-
+--- Teleport To Player
 local teleplayer_sec = TabTeleport:Section({ 
     Title = "Players",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
+
+local teleplayerFeature = nil
+local currentPlayerName = nil
 
 local teleplayer_dd = teleplayer_sec:Dropdown({
     Title = "Select Player",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = "Category A",
+    Values = listPlayers(true),
+    Value = "",
     Callback = function(option) 
-        print("Category selected: " .. option) 
+        local name = normalizeOption(option)
+        currentPlayerName = name
+        if teleplayerFeature and teleplayerFeature.SetTarget then
+            teleplayerFeature:SetTarget(name)
+        end
+        -- optional: debug
+         print("[teleplayer] selected:", name, typeof(option))
     end
 })
 
@@ -1681,7 +1855,34 @@ local teleplayer_btn = teleplayer_sec:Button({
     Desc = "",
     Locked = false,
     Callback = function()
-        print("clicked")
+         if not teleplayerFeature then
+            teleplayerFeature = FeatureManager:GetFeature("AutoTeleportPlayer", {
+                dropdown       = teleplayer_dd,
+                refreshButton  = teleplayerrefresh_btn,
+                teleportButton = nil, -- ga wajib dipakai modul
+            })
+            if not teleplayerFeature then
+                WindUI:Notify({ Title="Error", Content="AutoTeleportPlayer gagal dimuat", Icon="x", Duration=3 })
+                return
+            end
+        end
+
+        -- fallback: kalau somehow current masih nil, coba tarik dari dropdown
+        if (not currentPlayerName or currentPlayerName == "") then
+            local v = rawget(teleplayer_dd, "Value")
+            currentPlayerName = normalizeOption(v)
+        end
+
+        if (not currentPlayerName or currentPlayerName == "") then
+            WindUI:Notify({ Title = "Teleport Failed", Content = "Pilih player dulu dari dropdown", Icon = "x", Duration = 3 })
+            return
+        end
+
+        teleplayerFeature:SetTarget(currentPlayerName)
+        local ok = teleplayerFeature:Teleport()
+        if not ok then
+            WindUI:Notify({ Title = "Teleport Failed", Content = "Gagal teleport (anti-cheat/target belum spawn?)", Icon = "x", Duration = 3 })
+        end
     end
 })
 
@@ -1690,20 +1891,28 @@ local teleplayerrefresh_btn = teleplayer_sec:Button({
     Desc = "",
     Locked = false,
     Callback = function()
-        print("clicked")
+       local names = listPlayers(true)
+        teleplayer_dd:Refresh(names) -- <— API resmi
+        -- jaga state: kalau current hilang, auto-pick pertama biar nggak nil
+        if not table.find(names, currentPlayerName) then
+            currentPlayerName = names[1]
+            if currentPlayerName then
+                teleplayer_dd:Select(currentPlayerName) -- <— API resmi
+                if teleplayerFeature and teleplayerFeature.SetTarget then
+                    teleplayerFeature:SetTarget(currentPlayerName)
+                end
+            end
+        end
+        WindUI:Notify({ Title = "Players", Content = ("Online: %d"):format(#names), Icon = "users", Duration = 2 })
     end
 })
 
 --- === Misc === ---
-
-
-
 --- Webhook
 local webhookfish_sec = TabMisc:Section({ 
     Title = "Webhook",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
-    Opened = true
 })
 
 -- State variables untuk webhook
@@ -1724,7 +1933,7 @@ end
 
 local webhookfish_in = webhookfish_sec:Input({
     Title = "Discord Webhook URL",
-    Desc = "Paste your Discord webhook URL here",
+    Desc = "",
     Value = "",
     Placeholder = "https://discord.com/api/webhooks/...",
     Type = "Input",
@@ -1741,7 +1950,7 @@ local webhookfish_in = webhookfish_sec:Input({
 
 local webhookfish_ddm = webhookfish_sec:Dropdown({
     Title = "Select Rarity",
-    Desc = "Choose which fish types/rarities to send to webhook",
+    Desc = "Choose which fish rarities to send to webhook",
     Values = WEBHOOK_FISH_OPTIONS,
     Value = {"Legendary", "Mythic", "Secret"}, -- Default selection
     Multi = true,
@@ -1764,7 +1973,7 @@ local webhookfish_ddm = webhookfish_sec:Dropdown({
 
 local webhookfish_tgl = webhookfish_sec:Toggle({
     Title = "Enable Fish Webhook",
-    Desc = "Automatically send notifications when catching selected fish types",
+    Desc = "Automatically send notifications to webhook",
     Default = false,
     Callback = function(state)
         print("[Webhook] Toggle:", state)
@@ -1786,7 +1995,7 @@ local webhookfish_tgl = webhookfish_sec:Toggle({
                 WindUI:Notify({
                     Title = "Warning",
                     Content = "No fish types selected - will monitor all catches",
-                    Icon = "alert-triangle",
+                    Icon = "triangle-alert",
                     Duration = 3
                 })
             end
@@ -1848,9 +2057,9 @@ local webhookfish_tgl = webhookfish_sec:Toggle({
     end
 })
 
---- Vuln
-local vuln_sec = TabMisc:Section({ 
-    Title = "Vuln",
+--- Other
+local others_sec = TabMisc:Section({ 
+    Title = "Other",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
@@ -1901,7 +2110,7 @@ local eqfishradar_tgl = TabMisc:Toggle({
   radarOn = state
   if state then
     if not autoGearFeature then
-      autoGearFeature = FeatureManager:GetFeature("AutoGearOxyRadar")
+      autoGearFeature = FeatureManager:LoadFeature("AutoGearOxyRadar")
       if autoGearFeature and autoGearFeature.Start then
         autoGearFeature:Start()
       end
@@ -1918,6 +2127,64 @@ local eqfishradar_tgl = TabMisc:Toggle({
     autoGearFeature:Stop()
   end
 end
+})
+
+--- Anti AFK
+local antiafkFeature = nil
+
+local antiafk_tgl = TabMisc:Toggle({
+    Title = "Anti AFK",
+    Default = true,
+    Callback = function(state) 
+   if state then
+      if not antiafkFeature then
+        antiafkFeature = FeatureManager:LoadFeature("AntiAfk")
+      end
+      if antiafkFeature and antiafkFeature.Start then
+        antiafkFeature:Start()
+      else
+        antiafk_tgl:Set(false)
+        WindUI:Notify({ Title="Failed", Content="Could not start AntiAfk", Icon="x", Duration=3 })
+      end
+    else
+      if antiafkFeature and antiafkFeature.Stop then antiafkFeature:Stop() end
+    end
+  end
+})
+
+--- Boost FPS
+local alreadyApplied = false
+local boostFeature = nil
+
+local boostfps_btn = TabMisc:Button({
+    Title = "Boost FPS",
+    Desc = "Reduce Graphics",
+    Locked = false,
+    Callback = function()
+        if alreadyApplied then
+            WindUI:Notify({ Title="Boost FPS", Content="Already applied (Ultra)", Icon="info", Duration=2 })
+            return
+        end
+
+        if not boostFeature then
+            boostFeature = FeatureManager:GetFeature("BoostFPS")
+            if not boostFeature then
+                WindUI:Notify({ Title="Failed", Content="Could not load BoostFPS", Icon="x", Duration=3 })
+                return
+            end
+        end
+
+        local ok, err = pcall(function()
+            boostFeature:Apply({})
+        end)
+
+        if ok then
+            alreadyApplied = true
+            WindUI:Notify({ Title="Boost FPS", Content="Applied: Ultra Low", Icon="check", Duration=2 })
+        else
+            WindUI:Notify({ Title="Error", Content=tostring(err), Icon="x", Duration=3 })
+        end
+    end
 })
 
 Window:SelectTab(1)
@@ -1942,7 +2209,7 @@ if type(Window.OnDestroy) == "function" then
         end
         FeatureManager.LoadedFeatures = {}
         
-        -- Cleanup custom icon - DIPERBAIKI
+        -- Cleanup custom icon
         if _G.DevLogicIconCleanup then
             pcall(_G.DevLogicIconCleanup)
             _G.DevLogicIconCleanup = nil
@@ -1955,15 +2222,5 @@ if type(Window.OnDestroy) == "function" then
         end
     end)
 end
-
-
-
-
-
-
-
-
-
-
 
 
