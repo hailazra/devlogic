@@ -16,8 +16,8 @@ local hbConn = nil
 local inventoryWatcher = nil
 
 -- Configuration
-local selectedTiers = {} -- set: { [tierNumber] = true } for fish
-local selectedItems = {} -- set: { ["Enchant Stone"] = true } for items
+local selectedTiers = { [tierNumber] = true } -- set: { [tierNumber] = true } for fish
+local selectedItems = { ["Enchant Stone"] = true} -- set: { ["Enchant Stone"] = true } for items
 local selectedPlayers = {} -- set: { [playerName] = true }
 local TICK_STEP = 0.5 -- throttle interval
 local TRADE_DELAY = 5.0 -- delay between trade requests
