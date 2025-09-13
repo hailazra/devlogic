@@ -1117,9 +1117,11 @@ local tradeitem_ddm = autotrade_sec:Dropdown({
     Callback = function(options)
         selectedTradeItems = options or {}
         if autoTradeFeature and autoTradeFeature.SetSelectedItems then
+            -- boleh pass original (robust), atau versi normalized (lebih konsisten)
             autoTradeFeature:SetSelectedItems(selectedTradeItems)
         end
-        print("[AutoSendTrade] Selected items:", table.concat(selectedTradeItems, ", "))
+        local show = normalizeOption(selectedTradeItems)
+        print("[AutoSendTrade] Selected items:", #show>0 and table.concat(show, ", ") or "(none)")
     end
 })
 
