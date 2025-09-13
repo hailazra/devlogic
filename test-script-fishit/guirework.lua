@@ -1496,10 +1496,10 @@ local autotrade_tgl = autotrade_sec:Toggle({
 -- Auto Accept Trade implementation (UPDATED FOR DIRECT HOOK APPROACH)
 local autoAcceptTradeFeature = nil
 
--- SIMPLIFIED Toggle untuk Auto Accept Trade - Direct Hook Version
+--- UPDATED Toggle untuk Auto Accept Trade - Button Click Version
 local autogiftacc_tgl = autotrade_sec:Toggle({
     Title = "Auto Accept Trade",
-    Desc = "Automatically accept incoming trade requests (Direct Hook)",
+    Desc = "Automatically accept incoming trade requests (Button Click Method)",
     Default = false,
     Callback = function(state) 
         print("[GUI] AutoAcceptTrade toggle:", state)
@@ -1508,7 +1508,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
             -- Load feature jika belum ada
             if not autoAcceptTradeFeature then
                 print("[AutoAcceptTrade] Loading feature...")
-                autoAcceptTradeFeature = FeatureManager:GetFeature("AutoAcceptTrade", {
+                autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade", {
                     toggle = autogiftacc_tgl
                 })
                 
@@ -1526,19 +1526,19 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
                 print("[AutoAcceptTrade] Feature loaded successfully")
             end
             
-            -- Start auto accept (NO CONFIG NEEDED - Direct Hook)
-            print("[AutoAcceptTrade] Starting direct hook mode...")
+            -- Start auto accept (Button Click Mode)
+            print("[AutoAcceptTrade] Starting button click mode...")
             if autoAcceptTradeFeature and autoAcceptTradeFeature.Start then
-                local success = autoAcceptTradeFeature:Start() -- No parameters needed
+                local success = autoAcceptTradeFeature:Start()
                 
                 if success ~= false then
                     WindUI:Notify({
                         Title = "Started",
-                        Content = "Auto Accept Trade active (Direct Hook)",
+                        Content = "Auto Accept Trade active (Button Click)",
                         Icon = "check",
                         Duration = 2
                     })
-                    print("[AutoAcceptTrade] Successfully started in direct hook mode")
+                    print("[AutoAcceptTrade] Successfully started in button click mode")
                 else
                     autogiftacc_tgl:Set(false)
                     WindUI:Notify({
@@ -1572,7 +1572,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
     end
 })
 
--- Status button (UPDATED - Remove click-related info)
+-- Status button (UPDATED for Button Click Method)
 local acceptstatus_btn = autotrade_sec:Button({
     Title = "Accept Trade Status",
     Desc = "Show status and statistics",
@@ -1581,17 +1581,15 @@ local acceptstatus_btn = autotrade_sec:Button({
         if autoAcceptTradeFeature and autoAcceptTradeFeature.GetStatus then
             local status = autoAcceptTradeFeature:GetStatus()
             local statusText = string.format(
-                "Running: %s\nProcessing: %s\nTotal Accepted: %d\nSession: %d\nMode: Direct Hook\nRemote Found: %s",
+                "Running: %s\nSpamming: %s\nTotal Processed: %d\nSession: %d\nCurrent Clicks: %d\nMode: %s\nRemote Found: %s",
                 status.isRunning and "Yes" or "No",
-                status.isProcessingTrade and "Yes" or "No", 
-                status.totalTradesAccepted or 0,
+                status.isSpamming and "Yes" or "No",
+                status.totalTradesProcessed or 0,
                 status.currentSessionTrades or 0,
+                status.currentClicks or 0,
+                status.mode or "Unknown",
                 status.remoteFound and "Yes" or "No"
             )
-            
-            if status.hasCurrentTrade and status.currentTradeFrom then
-                statusText = statusText .. "\nCurrent Trade: " .. status.currentTradeFrom
-            end
             
             WindUI:Notify({
                 Title = "AutoAccept Status",
@@ -1610,10 +1608,10 @@ local acceptstatus_btn = autotrade_sec:Button({
     end
 })
 
--- Test button (UPDATED - Remove GUI clicking test)
-local testremote_btn = autotrade_sec:Button({
-    Title = "Test Remote Access",
-    Desc = "Test if trade remote can be hooked",
+-- Test button (UPDATED for Button Click Method)
+local testbuttonaccess_btn = autotrade_sec:Button({
+    Title = "Test Button Access",
+    Desc = "Test if trade button can be accessed",
     Locked = false,
     Callback = function()
         if not autoAcceptTradeFeature then
@@ -1629,18 +1627,18 @@ local testremote_btn = autotrade_sec:Button({
             end
         end
         
-        if autoAcceptTradeFeature.TestRemoteAccess then
-            autoAcceptTradeFeature:TestRemoteAccess()
+        if autoAcceptTradeFeature.TestButtonAccess then
+            autoAcceptTradeFeature:TestButtonAccess()
             WindUI:Notify({
                 Title = "Test Complete",
-                Content = "Check console for remote test results",
+                Content = "Check console for button test results",
                 Icon = "info", 
                 Duration = 3
             })
         else
             WindUI:Notify({
                 Title = "Test Unavailable",
-                Content = "TestRemoteAccess method not found",
+                Content = "TestButtonAccess method not found",
                 Icon = "triangle-alert",
                 Duration = 3
             })
