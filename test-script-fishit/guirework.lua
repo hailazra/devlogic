@@ -163,6 +163,37 @@ local function getFishNames()
     return fishNames
 end
 
+--- Fish Name KHUSUS TRADE
+local function getFishNamesForTrade()
+    local fishNames = {}
+    local itemsModule = ReplicatedStorage:FindFirstChild("Items")
+    if not itemsModule then
+        warn("[AutoSendTrade] Items module not found")
+        return fishNames
+    end
+    
+    for _, item in pairs(itemsModule:GetChildren()) do
+        if item:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(item)
+            end)
+            
+            if success and moduleData then
+                -- Check apakah Type = "Fishes"
+                if moduleData.Data and moduleData.Data.Type == "Fishes" then
+                    -- Ambil nama dari Data.Name (sama seperti di script autosendtrade)
+                    if moduleData.Data.Name then
+                        table.insert(fishNames, moduleData.Data.Name)
+                    end
+                end
+            end
+        end
+    end
+    
+    table.sort(fishNames)
+    return fishNames
+end
+
 local listRod       = getFishingRodNames()
 local weatherName   = getWeatherNames()
 local eventNames    = getEventNames()
@@ -1265,37 +1296,6 @@ local autotrade_sec = TabAutomation:Section({
     TextSize = 17,
 })
 
--- Helper function untuk ambil data ikan dari ReplicatedStorage.Items
-local function getFishNamesForTrade()
-    local fishNames = {}
-    local itemsModule = ReplicatedStorage:FindFirstChild("Items")
-    if not itemsModule then
-        warn("[AutoSendTrade] Items module not found")
-        return fishNames
-    end
-    
-    for _, item in pairs(itemsModule:GetChildren()) do
-        if item:IsA("ModuleScript") then
-            local success, moduleData = pcall(function()
-                return require(item)
-            end)
-            
-            if success and moduleData then
-                -- Check apakah Type = "Fishes"
-                if moduleData.Data and moduleData.Data.Type == "Fishes" then
-                    -- Ambil nama dari Data.Name (sama seperti di script autosendtrade)
-                    if moduleData.Data.Name then
-                        table.insert(fishNames, moduleData.Data.Name)
-                    end
-                end
-            end
-        end
-    end
-    
-    table.sort(fishNames)
-    return fishNames
-end
-
 -- State variables
 local autoTradeFeature = nil
 local selectedTradeItems = {}
@@ -1485,41 +1485,6 @@ local autotrade_tgl = autotrade_sec:Toggle({
                     Duration = 2
                 })
             end
-        end
-    end
-})
-
--- Status display (optional - untuk debugging)
-local tradestatus_btn = autotrade_sec:Button({
-    Title = "Show Status",
-    Desc = "Debug information",
-    Locked = false,
-    Callback = function()
-        if autoTradeFeature and autoTradeFeature.GetStatus then
-            local status = autoTradeFeature:GetStatus()
-            local statusText = string.format(
-                "Running: %s\nQueue: %d\nSent: %d\nPending: %s\nDelay: %.1fs\nInventory: %d items",
-                status.isRunning and "Yes" or "No",
-                status.queueLength or 0,
-                status.totalTradesSent or 0,
-                status.hasPendingTrade and "Yes" or "No", 
-                status.tradeDelay or 0,
-                status.inventoryCacheSize or 0
-            )
-            
-            WindUI:Notify({
-                Title = "AutoTrade Status",
-                Content = statusText,
-                Icon = "info", 
-                Duration = 5
-            })
-        else
-            WindUI:Notify({
-                Title = "Status",
-                Content = "Feature not loaded yet",
-                Icon = "info",
-                Duration = 2
-            })
         end
     end
 })
