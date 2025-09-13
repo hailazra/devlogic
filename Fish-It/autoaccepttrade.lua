@@ -1,466 +1,251 @@
---- AutoAcceptTrade.lua - Button Click Method (Anti-Cheat Safe)
-local AutoAcceptTrade = {}
-AutoAcceptTrade.__index = AutoAcceptTrade
+-- File: autoaccepttrade_spam.lua
+-- Mode: NO HOOKS. Listen -> spam-click Yes button -> stop on TextNotification or prompt gone.
+
+local AutoAcceptTradeSpam = {}
+AutoAcceptTradeSpam.__index = AutoAcceptTradeSpam
 
 -- Services
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local Players              = game:GetService("Players")
+local ReplicatedStorage    = game:GetService("ReplicatedStorage")
+local RunService           = game:GetService("RunService")
+local UserInputService     = game:GetService("UserInputService")
+local VirtualInputManager  = game:GetService("VirtualInputManager")
+
 local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
--- State
-local running = false
-local isSpamming = false
-local clickConnection = nil
-local notificationConnection = nil
-local invokeConnection = nil
+-- ===== Config (boleh di-tune) =====
+local CONFIG = {
+    -- Path tombol Yes (sesuai info kamu)
+    YesButtonPath = {"Prompt","Blackout","Options","Yes"}, -- ImageButton
 
--- Configuration
-local CLICK_INTERVAL = 0.05 -- Interval antar click (50ms)
-local MAX_CLICKS = 300 -- Maximum clicks untuk safety
-local BUTTON_POSITION = Vector2.new(277.137 + (80.738/2), 137.208 + (22.812/2)) -- Center position
-local CLICK_TIMEOUT = 15 -- Timeout dalam detik jika tidak ada trade complete
+    -- Spam behavior
+    ClicksPerSecond = 18,   -- 6..40 aman. 18 = natural
+    MaxSpamSeconds  = 6,    -- safety stop bila trade nggak selesai
+    JitterPixels    = 3,    -- random offset klik di sekitar center
+    UseVIM          = true, -- pakai VirtualInputManager (lebih natural dari firesignal)
 
--- Statistics
-local totalTradesProcessed = 0
-local currentSessionTrades = 0
-local clickCount = 0
-local startTime = 0
+    -- Stop reasons via notif teks (lowercased contains)
+    StopOnTextMatches = { "trade complete", "trade completed", "trade successful" },
+    StopOnFailMatches = { "trade cancelled", "trade canceled", "trade declined", "trade expired", "trade failed" },
+}
 
--- Remotes
-local awaitTradeResponseRemote = nil
-local textNotificationRemote = nil
+-- ===== State =====
+local running        = false
+local spamming       = false
+local spamThread     = nil
+local stopRequested  = false
+local notifConn      = nil
+local textNotifRE    = nil
 
--- === REMOTE FINDER ===
-local function findRemoteWithFallback(remoteName, maxRetries)
-    maxRetries = maxRetries or 3
-    
-    local searchPaths = {
-        function() 
-            return ReplicatedStorage:WaitForChild("Packages", 5)
-                                   :WaitForChild("_Index", 5)
-                                   :WaitForChild("sleitnick_net@0.2.0", 5)
-                                   :WaitForChild("net", 5)
-                                   :WaitForChild(remoteName, 5)
-        end,
-        function()
-            return ReplicatedStorage:WaitForChild("Packages", 5)
-                                   :WaitForChild("_Index", 5)
-                                   :WaitForChild("sleitnick_net@0.1.0", 5)
-                                   :WaitForChild("net", 5)
-                                   :WaitForChild(remoteName, 5)
-        end,
-        function()
-            -- Scan semua versi net
-            local packages = ReplicatedStorage:WaitForChild("Packages", 5)
-            local index = packages:WaitForChild("_Index", 5)
-            
-            for _, child in pairs(index:GetChildren()) do
+-- ===== Helpers =====
+local function findNetRemote(name)
+    -- Cari di sleitnick_net dulu
+    local packages = ReplicatedStorage:FindFirstChild("Packages")
+    if packages then
+        local index = packages:FindFirstChild("_Index")
+        if index then
+            for _, child in ipairs(index:GetChildren()) do
                 if child.Name:match("sleitnick_net@") then
-                    local netFolder = child:FindFirstChild("net")
-                    if netFolder then
-                        local remote = netFolder:FindFirstChild(remoteName)
-                        if remote then
-                            return remote
-                        end
+                    local net = child:FindFirstChild("net")
+                    if net then
+                        local r = net:FindFirstChild(name)
+                        if r then return r end
                     end
                 end
             end
-            return nil
         end
-    }
-    
-    for attempt = 1, maxRetries do
-        for i, pathFunc in ipairs(searchPaths) do
-            local success, result = pcall(pathFunc)
-            if success and result then
-                print(string.format("[AutoAcceptTrade] Found %s via path %d", remoteName, i))
-                return result
+    end
+    -- Fallback scan terbatas
+    local function scan(folder, depth)
+        if depth > 3 then return nil end
+        local r = folder:FindFirstChild(name)
+        if r then return r end
+        for _, c in ipairs(folder:GetChildren()) do
+            if c:IsA("Folder") then
+                local f = scan(c, depth + 1)
+                if f then return f end
             end
         end
-        
-        if attempt < maxRetries then
-            task.wait(1)
-        end
     end
-    
-    warn(string.format("[AutoAcceptTrade] Failed to find %s", remoteName))
-    return nil
+    return scan(ReplicatedStorage, 0)
 end
 
-local function findRemotes()
-    awaitTradeResponseRemote = findRemoteWithFallback("RF/AwaitTradeResponse", 3)
-    textNotificationRemote = findRemoteWithFallback("RE/TextNotification", 2)
-    
-    if not awaitTradeResponseRemote then
-        warn("[AutoAcceptTrade] Critical: AwaitTradeResponse remote not found")
-        return false
+local function getYesButton()
+    local node = PlayerGui
+    for _, seg in ipairs(CONFIG.YesButtonPath) do
+        node = node and node:FindFirstChild(seg)
+        if not node then return nil end
     end
-    
-    print("[AutoAcceptTrade] Remotes found successfully")
+    return (node and node:IsA("ImageButton")) and node or nil
+end
+
+local function ancestorsVisible(guiObj)
+    local cur = guiObj
+    while cur and cur ~= PlayerGui do
+        if cur:IsA("GuiObject") and cur.Visible == false then
+            return false
+        end
+        cur = cur.Parent
+    end
     return true
 end
 
--- === BUTTON CLICKING METHODS ===
-
--- Method 1: VirtualInputManager (paling aman)
-local function clickWithVIM(position)
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 1)
-        task.wait(0.01)
-        VirtualInputManager:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 1)
-    end)
+local function isClickable(btn)
+    return btn
+       and btn:IsDescendantOf(PlayerGui)
+       and btn.Visible
+       and ancestorsVisible(btn)
+       and btn.AbsoluteSize.X > 0
+       and btn.AbsoluteSize.Y > 0
 end
 
--- Method 2: Direct button access dengan firesignal
-local function clickButtonDirect()
-    pcall(function()
-        local playerGui = LocalPlayer:WaitForChild("PlayerGui", 0.1)
-        if not playerGui then return end
-        
-        local prompt = playerGui:FindFirstChild("Prompt")
-        if not prompt then return end
-        
-        local blackout = prompt:FindFirstChild("Blackout")
-        if not blackout then return end
-        
-        local options = blackout:FindFirstChild("Options")
-        if not options then return end
-        
-        local yesButton = options:FindFirstChild("Yes")
-        if yesButton and yesButton:IsA("ImageButton") then
-            -- Cek apakah button visible dan interactable
-            if yesButton.Visible and yesButton.Parent.Visible then
-                firesignal(yesButton.MouseButton1Click)
-                firesignal(yesButton.MouseButton1Down)
-                firesignal(yesButton.MouseButton1Up)
-                firesignal(yesButton.Activated)
-                return true
+local function clickAt(x, y)
+    if VirtualInputManager and CONFIG.UseVIM then
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true,  game, 0)
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+    else
+        -- Fallback: firesignal (beberapa anti-cheat kurang suka cara ini)
+        local btn = getYesButton()
+        if btn then
+            pcall(function() firesignal(btn.MouseButton1Down) end)
+            pcall(function() firesignal(btn.MouseButton1Click) end)
+            pcall(function() firesignal(btn.MouseButton1Up) end)
+        end
+    end
+end
+
+local function startSpam()
+    if spamming then return end
+    spamming = true
+    stopRequested = false
+
+    spamThread = task.spawn(function()
+        local started = tick()
+        while spamming do
+            if stopRequested then break end
+
+            local btn = getYesButton()
+            if not isClickable(btn) then
+                -- Kalau prompt hilang mendadak, stop sebentar lagi
+                if tick() - started > 0.15 then break end
+            else
+                local absPos  = btn.AbsolutePosition
+                local absSize = btn.AbsoluteSize
+                -- klik dekat center + jitter kecil
+                local cx = absPos.X + absSize.X/2 + math.random(-CONFIG.JitterPixels, CONFIG.JitterPixels)
+                local cy = absPos.Y + absSize.Y/2 + math.random(-CONFIG.JitterPixels, CONFIG.JitterPixels)
+                clickAt(cx, cy)
+            end
+
+            -- pacing acak biar nggak kaku
+            local base = 1 / math.clamp(CONFIG.ClicksPerSecond, 6, 40)
+            task.wait(base + (math.random() - 0.5) * base * 0.35)
+
+            -- safety timeout
+            if (tick() - started) > CONFIG.MaxSpamSeconds then
+                break
             end
         end
-    end)
-    return false
-end
-
--- Method 3: Mouse simulation
-local function clickWithMouse(position)
-    pcall(function()
-        local mouse = LocalPlayer:GetMouse()
-        -- Simulate mouse events
-        mouse1click()
+        spamming = false
     end)
 end
 
--- Combined click function
-local function performClick()
-    if not isSpamming then return end
-    
-    clickCount = clickCount + 1
-    
-    -- Try multiple methods untuk reliability
-    local success1 = clickButtonDirect()
-    clickWithVIM(BUTTON_POSITION)
-    clickWithMouse(BUTTON_POSITION)
-    
-    if clickCount % 20 == 0 then
-        print(string.format("[AutoAcceptTrade] Clicked %d times", clickCount))
+local function stopSpam(reason)
+    if not spamming then return end
+    stopRequested = true
+    for _ = 1, 25 do
+        if not spamming then break end
+        task.wait(0.01)
     end
-    
-    -- Safety check
-    if clickCount >= MAX_CLICKS then
-        print("[AutoAcceptTrade] Reached maximum clicks, stopping")
-        stopSpamming()
-    end
-    
-    -- Timeout check
-    if tick() - startTime > CLICK_TIMEOUT then
-        print("[AutoAcceptTrade] Timeout reached, stopping")
-        stopSpamming()
+    print(("[AutoAcceptTradeSpam] stop (%s)"):format(reason or ""))
+end
+
+local function bindTextNotifications()
+    if notifConn then notifConn:Disconnect(); notifConn = nil end
+    textNotifRE = textNotifRE or findNetRemote("RE/TextNotification")
+
+    if textNotifRE and textNotifRE:IsA("RemoteEvent") then
+        notifConn = textNotifRE.OnClientEvent:Connect(function(payload)
+            if not running then return end
+            local txt = type(payload) == "table" and payload.Text
+            if not txt then return end
+            local t = tostring(txt):lower()
+
+            for _, k in ipairs(CONFIG.StopOnTextMatches) do
+                if string.find(t, k, 1, true) then
+                    stopSpam("complete")
+                    return
+                end
+            end
+            for _, k in ipairs(CONFIG.StopOnFailMatches) do
+                if string.find(t, k, 1, true) then
+                    stopSpam("cancelled")
+                    return
+                end
+            end
+        end)
+        print("[AutoAcceptTradeSpam] bound RE/TextNotification")
+    else
+        warn("[AutoAcceptTradeSpam] RE/TextNotification not found (auto-stop via notif off)")
     end
 end
 
--- === SPAM CONTROL ===
-local function startSpamming()
-    if isSpamming then return end
-    
-    isSpamming = true
-    clickCount = 0
-    startTime = tick()
-    
-    print("[AutoAcceptTrade] Started button spam clicking")
-    
-    -- Start clicking loop
-    clickConnection = RunService.Heartbeat:Connect(function()
-        if isSpamming then
-            performClick()
-            task.wait(CLICK_INTERVAL)
-        end
-    end)
-    
-    -- Safety timeout
-    task.spawn(function()
-        task.wait(CLICK_TIMEOUT)
-        if isSpamming then
-            print("[AutoAcceptTrade] Safety timeout, stopping spam")
-            stopSpamming()
-        end
-    end)
-end
-
-local function stopSpamming()
-    if not isSpamming then return end
-    
-    isSpamming = false
-    
-    if clickConnection then
-        clickConnection:Disconnect()
-        clickConnection = nil
+-- ===== Public API =====
+function AutoAcceptTradeSpam:Init(opts)
+    opts = opts or {}
+    for k, v in pairs(opts) do
+        if CONFIG[k] ~= nil then CONFIG[k] = v end
     end
-    
-    print(string.format("[AutoAcceptTrade] Stopped spam clicking (Total clicks: %d)", clickCount))
-    clickCount = 0
-end
 
--- === EVENT LISTENERS ===
-local function setupTradeListener()
-    if not awaitTradeResponseRemote then return false end
-    
-    -- Listen untuk OnClientInvoke trigger (tidak hook, hanya detect)
-    invokeConnection = awaitTradeResponseRemote.OnClientInvoke:Connect(function()
-        -- Event ini tidak akan pernah dipanggil karena kita tidak assign callback
-        -- Tapi kita bisa detect ketika ada attempt
-    end)
-    
-    -- Method alternatif: Monitor remote secara periodic
-    task.spawn(function()
-        while running do
-            task.wait(0.1)
-            
-            -- Check apakah ada trade prompt GUI
-            local hasTradePrompt = false
-            pcall(function()
-                local playerGui = LocalPlayer.PlayerGui
-                local prompt = playerGui:FindFirstChild("Prompt")
-                if prompt and prompt:FindFirstChild("Blackout") then
-                    local options = prompt.Blackout:FindFirstChild("Options")
-                    if options and options:FindFirstChild("Yes") then
-                        hasTradePrompt = true
-                    end
+    bindTextNotifications()
+
+    -- Passive: kalau tombol Yes muncul di PlayerGui, otomatis spam
+    PlayerGui.DescendantAdded:Connect(function(obj)
+        if not running then return end
+        if obj:IsA("ImageButton") and obj.Name == CONFIG.YesButtonPath[#CONFIG.YesButtonPath] then
+            task.delay(0.02, function() -- kasih waktu layout settle
+                if running and isClickable(obj) then
+                    startSpam()
                 end
             end)
-            
-            -- Jika ada trade prompt dan belum spam, mulai spam
-            if hasTradePrompt and not isSpamming and running then
-                print("[AutoAcceptTrade] Trade prompt detected! Starting spam click")
-                totalTradesProcessed = totalTradesProcessed + 1
-                currentSessionTrades = currentSessionTrades + 1
-                startSpamming()
-            end
         end
     end)
-    
+
+    print("[AutoAcceptTradeSpam] ready (NO HOOKS, GUI-click method)")
     return true
 end
 
-local function setupNotificationListener()
-    if not textNotificationRemote then 
-        print("[AutoAcceptTrade] No notification remote found")
-        return 
-    end
-    
-    notificationConnection = textNotificationRemote.OnClientEvent:Connect(function(data)
-        if not running then return end
-        
-        if data and data.Text then
-            local text = data.Text:lower()
-            
-            -- Check untuk trade complete
-            if string.find(text, "Trade completed!") or 
-               string.find(text, "Trade completed") or
-               string.find(text, "trade accepted") then
-                
-                print("[AutoAcceptTrade] Trade completed! Stopping spam")
-                stopSpamming()
-                
-            elseif string.find(text, "trade cancelled") or 
-                   string.find(text, "trade expired") or
-                   string.find(text, "trade declined") or
-                   string.find(text, "trade failed") then
-                
-                print("[AutoAcceptTrade] Trade cancelled/failed, stopping spam")
-                stopSpamming()
-            end
-        end
-    end)
-    
-    print("[AutoAcceptTrade] Notification listener setup")
+-- Opsional: kamu bisa panggil ini dari inbound-debug kamu saat RF/AwaitTradeResponse terdeteksi
+function AutoAcceptTradeSpam:NotifyAwaitTradeResponse()
+    if not running then return end
+    startSpam()
 end
 
--- === INTERFACE METHODS ===
-function AutoAcceptTrade:Init()
-    print("[AutoAcceptTrade] Initializing button click method...")
-    
-    if not findRemotes() then
-        warn("[AutoAcceptTrade] Failed to find required remotes")
-        return false
-    end
-    
-    if not setupTradeListener() then
-        warn("[AutoAcceptTrade] Failed to setup trade listener")
-        return false
-    end
-    
-    setupNotificationListener()
-    
-    print("[AutoAcceptTrade] Button click method initialized successfully")
-    print(string.format("[AutoAcceptTrade] Button position: %.2f, %.2f", BUTTON_POSITION.X, BUTTON_POSITION.Y))
-    
-    return true
-end
-
-function AutoAcceptTrade:Start()
-    if running then 
-        print("[AutoAcceptTrade] Already running!")
-        return true
-    end
-    
+function AutoAcceptTradeSpam:Start()
+    if running then return true end
     running = true
-    isSpamming = false
-    currentSessionTrades = 0
-    
-    print("[AutoAcceptTrade] Started - Button click mode active")
-    print("[AutoAcceptTrade] Will auto-click trade accept button when prompt appears")
-    return true
-end
-
-function AutoAcceptTrade:Stop()
-    if not running then 
-        print("[AutoAcceptTrade] Not running!")
-        return true
-    end
-    
-    running = false
-    stopSpamming()
-    
-    print("[AutoAcceptTrade] Stopped")
-    print("  Session trades processed:", currentSessionTrades)
-    return true
-end
-
-function AutoAcceptTrade:Cleanup()
-    self:Stop()
-
-    if notificationConnection then
-        notificationConnection:Disconnect()
-        notificationConnection = nil
-    end
-    
-    if invokeConnection then
-        invokeConnection:Disconnect()
-        invokeConnection = nil
-    end
-
-    awaitTradeResponseRemote = nil
-    textNotificationRemote = nil
-    totalTradesProcessed = 0
-    currentSessionTrades = 0
-    
-    print("[AutoAcceptTrade] Cleaned up")
-end
-
--- === STATUS METHODS ===
-function AutoAcceptTrade:GetStatus()
-    return {
-        isRunning = running,
-        isSpamming = isSpamming,
-        totalTradesProcessed = totalTradesProcessed,
-        currentSessionTrades = currentSessionTrades,
-        currentClicks = clickCount,
-        remoteFound = awaitTradeResponseRemote ~= nil,
-        mode = "Button Click Method"
-    }
-end
-
-function AutoAcceptTrade:IsRunning()
-    return running
-end
-
-function AutoAcceptTrade:IsSpamming()
-    return isSpamming
-end
-
--- === DEBUG METHODS ===
-function AutoAcceptTrade:TestClick()
-    print("[AutoAcceptTrade] Testing single click...")
-    performClick()
-end
-
-function AutoAcceptTrade:TestButtonAccess()
-    print("=== Button Access Test ===")
-    
-    local success = pcall(function()
-        local playerGui = LocalPlayer.PlayerGui
-        print("  PlayerGui found:", playerGui and "Yes" or "No")
-        
-        local prompt = playerGui:FindFirstChild("Prompt")
-        print("  Prompt found:", prompt and "Yes" or "No")
-        
-        if prompt then
-            local blackout = prompt:FindFirstChild("Blackout")
-            print("  Blackout found:", blackout and "Yes" or "No")
-            
-            if blackout then
-                local options = blackout:FindFirstChild("Options")
-                print("  Options found:", options and "Yes" or "No")
-                
-                if options then
-                    local yesButton = options:FindFirstChild("Yes")
-                    print("  Yes button found:", yesButton and "Yes" or "No")
-                    
-                    if yesButton then
-                        print("  Button type:", yesButton.ClassName)
-                        print("  Button visible:", yesButton.Visible)
-                        print("  Button position:", yesButton.AbsolutePosition)
-                        print("  Button size:", yesButton.AbsoluteSize)
-                    end
-                end
-            end
+    -- kalau saat Start prompt sudah tampil, langsung spam
+    task.delay(0.05, function()
+        if running and isClickable(getYesButton()) then
+            startSpam()
         end
     end)
-    
-    print("  Test success:", success)
-    print("=== End Test ===")
+    print("[AutoAcceptTradeSpam] started")
+    return true
 end
 
-function AutoAcceptTrade:ForceStartSpam()
-    print("[AutoAcceptTrade] Force starting spam click...")
-    if running then
-        startSpamming()
-    else
-        print("[AutoAcceptTrade] Not running, start first!")
-    end
+function AutoAcceptTradeSpam:Stop()
+    if not running then return true end
+    running = false
+    stopSpam("manual stop")
+    print("[AutoAcceptTradeSpam] stopped")
+    return true
 end
 
-function AutoAcceptTrade:ForceStopSpam()
-    print("[AutoAcceptTrade] Force stopping spam click...")
-    stopSpamming()
+function AutoAcceptTradeSpam:Cleanup()
+    self:Stop()
+    if notifConn then notifConn:Disconnect(); notifConn = nil end
 end
 
--- === STATISTICS ===
-function AutoAcceptTrade:GetTotalProcessed()
-    return totalTradesProcessed
-end
-
-function AutoAcceptTrade:GetSessionProcessed()
-    return currentSessionTrades
-end
-
-function AutoAcceptTrade:ResetStats()
-    totalTradesProcessed = 0
-    currentSessionTrades = 0
-    print("[AutoAcceptTrade] Statistics reset")
-end
-
-return AutoAcceptTrade
+return AutoAcceptTradeSpam
