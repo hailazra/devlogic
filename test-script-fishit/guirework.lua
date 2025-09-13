@@ -16,6 +16,7 @@ local BaitModule = ReplicatedStorage.Baits
 local ItemsModule = ReplicatedStorage.Items
 local WeatherModule = ReplicatedStorage.Events
 local BoatModule = ReplicatedStorage.Boats
+local TiersModule = ReplicatedStorage.Tiers
 
 --- === HELPERS FOR DROPDOWN BY REAL DATA GAME === ---
 --- Enchant
@@ -115,9 +116,31 @@ local function getEventNames()
     return eventNames
 end
 
+--- Tiers (Rarity)
+-- Function untuk ambil semua tier names
+local function getTierNames()
+    local tierNames = {}
+    -- Require the Tiers module
+    local success, tiersData = pcall(function()
+        return require(TiersModule)
+    end)
+    
+    if success and tiersData then
+        -- Loop through setiap tier data
+        for _, tierInfo in pairs(tiersData) do
+            if tierInfo.Name then
+                table.insert(tierNames, tierInfo.Name)
+            end
+        end
+    end
+    
+    return tierNames
+end
+
 local listRod = getFishingRodNames()
 local weatherName = getWeatherNames()
 local eventNames = getEventNames()
+local rarityName = getTierNames()
 
 -- Make global for features to access
 _G.GameServices = {
@@ -280,10 +303,10 @@ WindUI:AddTheme({
 
 --========== WINDOW ==========
 local Window = WindUI:CreateWindow({
-    Title         = "ATRES",
+    Title         = "Noctris",
     Icon          = "rbxassetid://123156553209294",
     Author        = "Fish It",
-    Folder        = "AtresHub",
+    Folder        = "NoctrisHub",
     Size          = UDim2.fromOffset(250, 250),
     Transparent   = true,
     Theme         = "Dark",
@@ -1944,17 +1967,6 @@ local fishWebhookFeature = nil
 local currentWebhookUrl = ""
 local selectedWebhookFishTypes = {}
 
--- Daftar tier ikan yang bisa dipilih
-local FISH_TIERS = {
-    "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret"
-}
-
--- Gabungkan opsi untuk dropdown
-local WEBHOOK_FISH_OPTIONS = {}
-for _, tier in ipairs(FISH_TIERS) do
-    table.insert(WEBHOOK_FISH_OPTIONS, tier)
-end
-
 local webhookfish_in = webhookfish_sec:Input({
     Title = "Discord Webhook URL",
     Desc = "",
@@ -1975,7 +1987,7 @@ local webhookfish_in = webhookfish_sec:Input({
 local webhookfish_ddm = webhookfish_sec:Dropdown({
     Title = "Select Rarity",
     Desc = "Choose which fish rarities to send to webhook",
-    Values = WEBHOOK_FISH_OPTIONS,
+    Values = rarityName,
     Value = {"Legendary", "Mythic", "Secret"}, -- Default selection
     Multi = true,
     AllowNone = true,
