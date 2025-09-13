@@ -1203,14 +1203,6 @@ local enchant_tgl = autoenchantrod_sec:Toggle({
     end
 })
 
-
---- Auto Gift
-local autotrade_sec = TabAutomation:Section({ 
-    Title = "Auto Gift",
-    TextXAlignment = "Left",
-    TextSize = 17, -- Default Size
-})
-
 -- helpers for player lists
 local function listPlayers(excludeSelf)
     local me = LocalPlayer and LocalPlayer.Name
@@ -1548,15 +1540,6 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
         if state then
             autogiftacc_tgl:Set(false) -- Reset untuk sementara
         end
-    end
-})
-
-local autogiftacc_tgl = autotrade_sec:Toggle({
-    Title = "Auto Accept Gift",
-    Desc  = "",
-    Default = false,
-    Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
     end
 })
 
