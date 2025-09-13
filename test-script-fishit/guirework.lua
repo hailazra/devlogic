@@ -1329,6 +1329,7 @@ local tradeitem_ddm = autotrade_sec:Dropdown({
     Desc = "Choose fish to trade",
     Values = getFishNamesForTrade(), -- Gunakan fungsi helper
     Value = {},
+    SearchBarEnabled = true,
     Multi = true,
     AllowNone = true,
     Callback = function(options)
