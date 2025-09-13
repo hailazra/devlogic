@@ -1291,18 +1291,18 @@ local function normalizeList(opts)
     return out
 end
 
---- Auto Gift
+--- Auto Trade
 local autotrade_sec = TabAutomation:Section({ 
-    Title = "Auto Gift",
+    Title = "Auto Send Trade",
     TextXAlignment = "Left",
     TextSize = 17,
+    Opened = true
 })
 
 -- State variables
 local autoTradeFeature = nil
 local selectedTradeItems = {}
 local selectedTargetPlayers = {}
-local autoAcceptTradeFeature = nil
 
 -- Dropdown untuk pilih target players (Multi - bisa kirim ke beberapa player)
 local tradeplayer_ddm = autotrade_sec:Dropdown({
@@ -1492,6 +1492,29 @@ local autotrade_tgl = autotrade_sec:Toggle({
     end
 })
 
+
+local autoAcceptTradeFeature = nil
+
+-- Input untuk click interval (optional)
+local acceptinterval_in = autotrade_sec:Input({
+    Title = "Click Interval (seconds)",
+    Desc = "How fast to click Yes button",
+    Value = "0.1", 
+    Placeholder = "0.1",
+    Numeric = true,
+    Callback = function(value)
+        local interval = tonumber(value) or 0.1
+        if interval < 0.05 then interval = 0.05 end
+        
+        print("[AutoAcceptTrade] Click interval set to:", interval, "seconds")
+        
+        -- Update feature jika sudah loaded
+        if autoAcceptTradeFeature and autoAcceptTradeFeature.SetClickInterval then
+            autoAcceptTradeFeature:SetClickInterval(interval)
+        end
+    end
+})
+
 -- Toggle untuk Auto Accept Trade
 local autogiftacc_tgl = autotrade_sec:Toggle({
     Title = "Auto Accept Trade",
@@ -1502,7 +1525,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
             -- Load feature jika belum ada
             if not autoAcceptTradeFeature then
                 print("[AutoAcceptTrade] Loading feature...")
-                autoAcceptTradeFeature = FeatureManager:GetFeature("AutoAcceptTrade", {
+                autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade", {
                     intervalInput = acceptinterval_in,
                     toggle = autogiftacc_tgl
                 })
@@ -1565,6 +1588,84 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
                     Content = "Auto Accept Trade stopped", 
                     Icon = "info",
                     Duration = 2
+                })
+            end
+        end
+    end
+})
+
+-- Status button untuk debugging (optional)
+local acceptstatus_btn = autotrade_sec:Button({
+    Title = "Accept Trade Status",
+    Desc = "Show status and statistics",
+    Locked = false,
+    Callback = function()
+        if autoAcceptTradeFeature and autoAcceptTradeFeature.GetStatus then
+            local status = autoAcceptTradeFeature:GetStatus()
+            local statusText = string.format(
+                "Running: %s\nProcessing: %s\nTotal Accepted: %d\nSession: %d\nClick Interval: %.2fs",
+                status.isRunning and "Yes" or "No",
+                status.isProcessingTrade and "Yes" or "No",
+                status.totalTradesAccepted or 0,
+                status.currentSessionTrades or 0,
+                status.clickInterval or 0.1
+            )
+            
+            if status.hasCurrentTrade and status.currentTradeFrom then
+                statusText = statusText .. "\nCurrent Trade: " .. status.currentTradeFrom
+            end
+            
+            WindUI:Notify({
+                Title = "AutoAccept Status",
+                Content = statusText,
+                Icon = "info",
+                Duration = 6
+            })
+        else
+            WindUI:Notify({
+                Title = "Status", 
+                Content = "Feature not loaded yet",
+                Icon = "info",
+                Duration = 2
+            })
+        end
+    end
+})
+
+-- Test button untuk debugging Yes button detection (optional)
+local testyes_btn = autotrade_sec:Button({
+    Title = "Test Yes Button",
+    Desc = "Test if Yes button can be found and clicked",
+    Locked = false,
+    Callback = function()
+        if not autoAcceptTradeFeature then
+            autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade")
+            if not autoAcceptTradeFeature then
+                WindUI:Notify({
+                    Title = "Error",
+                    Content = "Could not load AutoAcceptTrade feature",
+                    Icon = "x",
+                    Duration = 3
+                })
+                return
+            end
+        end
+        
+        if autoAcceptTradeFeature.TestYesButton then
+            local found = autoAcceptTradeFeature:TestYesButton()
+            if found then
+                WindUI:Notify({
+                    Title = "Test Result",
+                    Content = "Yes button found and clicked!",
+                    Icon = "check", 
+                    Duration = 3
+                })
+            else
+                WindUI:Notify({
+                    Title = "Test Result",
+                    Content = "Yes button not found (no active trade?)",
+                    Icon = "triangle-alert",
+                    Duration = 3
                 })
             end
         end
