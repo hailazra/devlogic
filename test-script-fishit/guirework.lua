@@ -1496,46 +1496,73 @@ local autotrade_tgl = autotrade_sec:Toggle({
 local autoAcceptTradeFeature = nil
 
 local autogiftacc_tgl = autotrade_sec:Toggle({
-    Title   = "Auto Accept Gift",
-    Desc    = "Spam klik tombol Yes sampai trade selesai",
+    Title = "Auto Accept Trade",
+    Desc = "Automatically accept incoming trade requests (Button Click Method)",
     Default = false,
-    Callback = function(state)
+    Callback = function(state) 
+        print("[GUI] AutoAcceptTrade toggle:", state)
+        
         if state then
-            -- Load modul kalau belum ada
+            -- Load feature jika belum ada
             if not autoAcceptTradeFeature then
+                print("[AutoAcceptTrade] Loading feature...")
                 autoAcceptTradeFeature = FeatureManager:GetFeature("AutoAcceptTrade", {
-                    -- kamu bisa kirim nilai konfigurasi kalau mau override:
-                    -- ClicksPerSecond = 18,
-                    -- MaxSpamSeconds  = 6,
-                    -- JitterPixels    = 3,
+                    toggle = autogiftacc_tgl
                 })
+                
+                if not autoAcceptTradeFeature then
+                    WindUI:Notify({
+                        Title = "Failed",
+                        Content = "Could not load AutoAcceptTrade feature",
+                        Icon = "x",
+                        Duration = 3
+                    })
+                    autogiftacc_tgl:Set(false)
+                    return
+                end
+                
+                print("[AutoAcceptTrade] Feature loaded successfully")
             end
-
-            -- Start listening & spam GUI “Yes” saat prompt muncul
+            
+            -- Start auto accept (Button Click Mode)
+            print("[AutoAcceptTrade] Starting button click mode...")
             if autoAcceptTradeFeature and autoAcceptTradeFeature.Start then
-                autoAcceptTradeFeature:Start()
-                WindUI:Notify({
-                    Title   = "Auto Accept",
-                    Content = "Listening… akan spam Yes saat trade prompt muncul",
-                    Icon    = "check",
-                    Duration = 2
-                })
+                local success = autoAcceptTradeFeature:Start()
+                
+                if success ~= false then
+                    WindUI:Notify({
+                        Title = "Started",
+                        Content = "Auto Accept Trade active (Button Click)",
+                        Icon = "check",
+                        Duration = 2
+                    })
+                    print("[AutoAcceptTrade] Successfully started in button click mode")
+                else
+                    autogiftacc_tgl:Set(false)
+                    WindUI:Notify({
+                        Title = "Failed", 
+                        Content = "Could not start Auto Accept Trade",
+                        Icon = "x",
+                        Duration = 3
+                    })
+                end
             else
                 autogiftacc_tgl:Set(false)
                 WindUI:Notify({
-                    Title   = "Failed",
-                    Content = "Tidak bisa start AutoAcceptTrade",
-                    Icon    = "x",
+                    Title = "Error",
+                    Content = "Start method not available",
+                    Icon = "x", 
                     Duration = 3
                 })
             end
         else
+            -- Stop auto accept
             if autoAcceptTradeFeature and autoAcceptTradeFeature.Stop then
                 autoAcceptTradeFeature:Stop()
                 WindUI:Notify({
-                    Title   = "Stopped",
-                    Content = "Auto Accept Gift dimatikan",
-                    Icon    = "info",
+                    Title = "Stopped",
+                    Content = "Auto Accept Trade stopped", 
+                    Icon = "info",
                     Duration = 2
                 })
             end
@@ -1543,6 +1570,41 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
     end
 })
 
+-- Status button (UPDATED for Button Click Method)
+local acceptstatus_btn = autotrade_sec:Button({
+    Title = "Accept Trade Status",
+    Desc = "Show status and statistics",
+    Locked = false,
+    Callback = function()
+        if autoAcceptTradeFeature and autoAcceptTradeFeature.GetStatus then
+            local status = autoAcceptTradeFeature:GetStatus()
+            local statusText = string.format(
+                "Running: %s\nSpamming: %s\nTotal Processed: %d\nSession: %d\nCurrent Clicks: %d\nMode: %s\nRemote Found: %s",
+                status.isRunning and "Yes" or "No",
+                status.isSpamming and "Yes" or "No",
+                status.totalTradesProcessed or 0,
+                status.currentSessionTrades or 0,
+                status.currentClicks or 0,
+                status.mode or "Unknown",
+                status.remoteFound and "Yes" or "No"
+            )
+            
+            WindUI:Notify({
+                Title = "AutoAccept Status",
+                Content = statusText,
+                Icon = "info",
+                Duration = 6
+            })
+        else
+            WindUI:Notify({
+                Title = "Status", 
+                Content = "Feature not loaded yet",
+                Icon = "info",
+                Duration = 2
+            })
+        end
+    end
+})
 
 --- === Shop === --- 
 --- Rod
