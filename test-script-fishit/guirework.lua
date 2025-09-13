@@ -1492,33 +1492,13 @@ local autotrade_tgl = autotrade_sec:Toggle({
     end
 })
 
--- Auto Accept Trade implementation
+-- Auto Accept Trade implementation (UPDATED FOR DIRECT HOOK APPROACH)
 local autoAcceptTradeFeature = nil
 
--- Input untuk click interval (optional)
-local acceptinterval_in = autotrade_sec:Input({
-    Title = "Click Interval (seconds)",
-    Desc = "How fast to click Yes button",
-    Value = "0.1", 
-    Placeholder = "0.1",
-    Numeric = true,
-    Callback = function(value)
-        local interval = tonumber(value) or 0.1
-        if interval < 0.05 then interval = 0.05 end
-        
-        print("[AutoAcceptTrade] Click interval set to:", interval, "seconds")
-        
-        -- Update feature jika sudah loaded
-        if autoAcceptTradeFeature and autoAcceptTradeFeature.SetClickInterval then
-            autoAcceptTradeFeature:SetClickInterval(interval)
-        end
-    end
-})
-
--- Toggle untuk Auto Accept Trade
+-- SIMPLIFIED Toggle untuk Auto Accept Trade - Direct Hook Version
 local autogiftacc_tgl = autotrade_sec:Toggle({
     Title = "Auto Accept Trade",
-    Desc = "Automatically accept incoming trade requests",
+    Desc = "Automatically accept incoming trade requests (Direct Hook)",
     Default = false,
     Callback = function(state) 
         print("[GUI] AutoAcceptTrade toggle:", state)
@@ -1528,7 +1508,6 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
             if not autoAcceptTradeFeature then
                 print("[AutoAcceptTrade] Loading feature...")
                 autoAcceptTradeFeature = FeatureManager:GetFeature("AutoAcceptTrade", {
-                    intervalInput = acceptinterval_in,
                     toggle = autogiftacc_tgl
                 })
                 
@@ -1546,26 +1525,19 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
                 print("[AutoAcceptTrade] Feature loaded successfully")
             end
             
-            -- Get click interval
-            local clickInterval = tonumber(acceptinterval_in.Value) or 0.1
-            if clickInterval < 0.05 then clickInterval = 0.05 end
-            
-            -- Start auto accept
-            print("[AutoAcceptTrade] Starting with interval:", clickInterval)
+            -- Start auto accept (NO CONFIG NEEDED - Direct Hook)
+            print("[AutoAcceptTrade] Starting direct hook mode...")
             if autoAcceptTradeFeature and autoAcceptTradeFeature.Start then
-                local success = autoAcceptTradeFeature:Start({
-                    clickInterval = clickInterval,
-                    maxClickAttempts = 100 -- 10 seconds max per trade
-                })
+                local success = autoAcceptTradeFeature:Start() -- No parameters needed
                 
                 if success ~= false then
                     WindUI:Notify({
                         Title = "Started",
-                        Content = "Auto Accept Trade is now active",
+                        Content = "Auto Accept Trade active (Direct Hook)",
                         Icon = "check",
                         Duration = 2
                     })
-                    print("[AutoAcceptTrade] Successfully started")
+                    print("[AutoAcceptTrade] Successfully started in direct hook mode")
                 else
                     autogiftacc_tgl:Set(false)
                     WindUI:Notify({
@@ -1599,7 +1571,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
     end
 })
 
--- Status button untuk debugging (optional)
+-- Status button (UPDATED - Remove click-related info)
 local acceptstatus_btn = autotrade_sec:Button({
     Title = "Accept Trade Status",
     Desc = "Show status and statistics",
@@ -1608,12 +1580,12 @@ local acceptstatus_btn = autotrade_sec:Button({
         if autoAcceptTradeFeature and autoAcceptTradeFeature.GetStatus then
             local status = autoAcceptTradeFeature:GetStatus()
             local statusText = string.format(
-                "Running: %s\nProcessing: %s\nTotal Accepted: %d\nSession: %d\nClick Interval: %.2fs",
+                "Running: %s\nProcessing: %s\nTotal Accepted: %d\nSession: %d\nMode: Direct Hook\nRemote Found: %s",
                 status.isRunning and "Yes" or "No",
-                status.isProcessingTrade and "Yes" or "No",
+                status.isProcessingTrade and "Yes" or "No", 
                 status.totalTradesAccepted or 0,
                 status.currentSessionTrades or 0,
-                status.clickInterval or 0.1
+                status.remoteFound and "Yes" or "No"
             )
             
             if status.hasCurrentTrade and status.currentTradeFrom then
@@ -1637,10 +1609,10 @@ local acceptstatus_btn = autotrade_sec:Button({
     end
 })
 
--- Test button untuk debugging Yes button detection (optional)
-local testyes_btn = autotrade_sec:Button({
-    Title = "Test Yes Button",
-    Desc = "Test if Yes button can be found and clicked",
+-- Test button (UPDATED - Remove GUI clicking test)
+local testremote_btn = autotrade_sec:Button({
+    Title = "Test Remote Access",
+    Desc = "Test if trade remote can be hooked",
     Locked = false,
     Callback = function()
         if not autoAcceptTradeFeature then
@@ -1656,23 +1628,21 @@ local testyes_btn = autotrade_sec:Button({
             end
         end
         
-        if autoAcceptTradeFeature.TestYesButton then
-            local found = autoAcceptTradeFeature:TestYesButton()
-            if found then
-                WindUI:Notify({
-                    Title = "Test Result",
-                    Content = "Yes button found and clicked!",
-                    Icon = "check", 
-                    Duration = 3
-                })
-            else
-                WindUI:Notify({
-                    Title = "Test Result",
-                    Content = "Yes button not found (no active trade?)",
-                    Icon = "triangle-alert",
-                    Duration = 3
-                })
-            end
+        if autoAcceptTradeFeature.TestRemoteAccess then
+            autoAcceptTradeFeature:TestRemoteAccess()
+            WindUI:Notify({
+                Title = "Test Complete",
+                Content = "Check console for remote test results",
+                Icon = "info", 
+                Duration = 3
+            })
+        else
+            WindUI:Notify({
+                Title = "Test Unavailable",
+                Content = "TestRemoteAccess method not found",
+                Icon = "triangle-alert",
+                Duration = 3
+            })
         end
     end
 })
