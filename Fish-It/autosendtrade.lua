@@ -20,7 +20,7 @@ local selectedTiers = {} -- set: { [tierNumber] = true } for fish
 local selectedItems = {} -- set: { ["Enchant Stone"] = true } for items
 local selectedPlayers = {} -- set: { [playerName] = true }
 local TICK_STEP = 0.5 -- throttle interval
-local TRADE_DELAY = 1.0 -- delay between trade requests
+local TRADE_DELAY = 4 -- delay between trade requests
 
 -- Cache
 local fishDataCache = {} -- { [fishId] = fishData }
