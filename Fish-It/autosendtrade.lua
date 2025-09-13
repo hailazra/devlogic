@@ -1,4 +1,4 @@
---- AutoSendTrade.lua - Interface lifecycle yang konsisten + logic by fish names
+--- AutoSendTrade.lua - Fixed Version
 local AutoSendTrade = {}
 AutoSendTrade.__index = AutoSendTrade
 
@@ -19,16 +19,14 @@ local inventoryWatcher = nil
 local selectedFishNames = {} -- set: { ["Fish Name"] = true }
 local selectedItemNames = {} -- set: { ["Item Name"] = true }
 local selectedPlayers = {} -- set: { [playerName] = true }
-local TRADE_DELAY = 3.0 -- delay between trade requests
-local MAX_TRADES_PER_BATCH = 5
-local BATCH_DELAY = 10.0
+local TRADE_DELAY = 5.0 -- delay between trade requests (increased from 3.0)
 
 -- Tracking
 local tradeQueue = {}
-local pendingTrades = {}
-local tradeCount = 0
+local pendingTrade = nil -- Only track one pending trade at a time
 local lastTradeTime = 0
 local isProcessing = false
+local totalTradesSent = 0
 
 -- Remotes
 local tradeRemote = nil
@@ -36,6 +34,7 @@ local textNotificationRemote = nil
 
 -- Cache for fish names
 local fishNamesCache = {}
+local inventoryCache = {} -- Cache for user inventory
 
 -- === Helper Functions ===
 
@@ -73,6 +72,57 @@ local function getFishNames()
     return fishNames
 end
 
+-- Scan and cache user inventory when feature loads
+local function scanAndCacheInventory()
+    if not inventoryWatcher or not inventoryWatcher._ready then
+        print("[AutoSendTrade] InventoryWatcher not ready, retrying in 1 second...")
+        task.wait(1)
+        return scanAndCacheInventory()
+    end
+    
+    inventoryCache = {
+        fishes = {},
+        items = {}
+    }
+    
+    -- Scan fishes
+    local fishSnapshot = inventoryWatcher:getSnapshotTyped("Fishes")
+    for _, fishEntry in ipairs(fishSnapshot) do
+        local fishUuid = fishEntry.UUID or fishEntry.Uuid or fishEntry.uuid
+        local fishId = fishEntry.Id or fishEntry.id
+        local fishName = inventoryWatcher:_resolveName("Fishes", fishId)
+        
+        if fishUuid and fishName then
+            table.insert(inventoryCache.fishes, {
+                uuid = fishUuid,
+                name = fishName,
+                id = fishId,
+                metadata = fishEntry.Metadata,
+                entry = fishEntry
+            })
+        end
+    end
+    
+    -- Scan items
+    local itemSnapshot = inventoryWatcher:getSnapshotTyped("Items")
+    for _, itemEntry in ipairs(itemSnapshot) do
+        local itemUuid = itemEntry.UUID or itemEntry.Uuid or itemEntry.uuid
+        local itemId = itemEntry.Id or itemEntry.id
+        local itemName = inventoryWatcher:_resolveName("Items", itemId)
+        
+        if itemUuid and itemName then
+            table.insert(inventoryCache.items, {
+                uuid = itemUuid,
+                name = itemName,
+                id = itemId,
+                entry = itemEntry
+            })
+        end
+    end
+    
+    print("[AutoSendTrade] Inventory cached:", #inventoryCache.fishes, "fishes,", #inventoryCache.items, "items")
+end
+
 local function findRemotes()
     local success1, remote1 = pcall(function()
         return RS:WaitForChild("Packages", 5)
@@ -84,6 +134,7 @@ local function findRemotes()
     
     if success1 and remote1 then
         tradeRemote = remote1
+        print("[AutoSendTrade] Trade remote found successfully")
     else
         warn("[AutoSendTrade] Failed to find InitiateTrade remote")
         return false
@@ -96,6 +147,7 @@ local function findRemotes()
                                    :WaitForChild("sleitnick_net@0.2.0", 5)
                                    :WaitForChild("net", 5)
                                    :WaitForChild("RE/TextNotification", 5)
+        print("[AutoSendTrade] Text notification remote found")
     end)
     
     return true
@@ -104,22 +156,14 @@ end
 local function shouldTradeFish(fishEntry)
     if not fishEntry then return false end
     
-    -- Resolve nama ikan menggunakan inventoryWatcher
-    local fishId = fishEntry.Id or fishEntry.id
-    local fishName = inventoryWatcher:_resolveName("Fishes", fishId)
-    
-    -- Check apakah nama ikan ini ada di selected list
+    local fishName = fishEntry.name
     return selectedFishNames[fishName] == true
 end
 
 local function shouldTradeItem(itemEntry)
     if not itemEntry then return false end
     
-    -- Resolve nama item menggunakan inventoryWatcher
-    local itemId = itemEntry.Id or itemEntry.id
-    local itemName = inventoryWatcher:_resolveName("Items", itemId)
-    
-    -- Check apakah nama item ini ada di selected list
+    local itemName = itemEntry.name
     return selectedItemNames[itemName] == true
 end
 
@@ -139,24 +183,32 @@ local function getRandomTargetPlayerId()
     return nil
 end
 
-local function sendTradeRequest(uuid, targetPlayerId, itemName)
-    if not tradeRemote or not uuid or not targetPlayerId then return false end
+-- FIXED: InvokeServer dengan parameter yang benar (playerId, uuid)
+local function sendTradeRequest(playerId, uuid, itemName)
+    if not tradeRemote or not uuid or not playerId then 
+        warn("[AutoSendTrade] Missing parameters:", "tradeRemote:", tradeRemote ~= nil, "uuid:", uuid, "playerId:", playerId)
+        return false 
+    end
     
     local success, result = pcall(function()
-        return tradeRemote:InvokeServer(targetPlayerId, uuid)
+        -- Format yang benar: InvokeServer(playerId, uuid)
+        return tradeRemote:InvokeServer(playerId, uuid)
     end)
     
     if success then
-        print("[AutoSendTrade] Sent trade request:", itemName, "to player ID", targetPlayerId)
+        print("[AutoSendTrade] ✅ Sent trade request:", itemName, "UUID:", uuid, "to player ID:", playerId)
+        totalTradesSent = totalTradesSent + 1
         return true
     else
-        warn("[AutoSendTrade] Failed to send trade request:", result)
+        warn("[AutoSendTrade] ❌ Failed to send trade request:", result)
         return false
     end
 end
 
 local function scanForTradableItems()
-    if not inventoryWatcher or not inventoryWatcher._ready or isProcessing then return end
+    if not inventoryWatcher or not inventoryWatcher._ready or isProcessing or pendingTrade then 
+        return 
+    end
     
     -- Check if we have targets
     local hasTargets = false
@@ -166,79 +218,51 @@ local function scanForTradableItems()
     end
     if not hasTargets then return end
     
-    -- Scan fishes
-    local fishSnapshot = inventoryWatcher:getSnapshotTyped("Fishes")
-    for _, fishEntry in ipairs(fishSnapshot) do
-        local fishUuid = fishEntry.UUID or fishEntry.Uuid or fishEntry.uuid
-        
-        if fishUuid and not inventoryWatcher:isEquipped(fishUuid) and not pendingTrades[fishUuid] then
+    -- Clear old queue
+    tradeQueue = {}
+    
+    -- Refresh inventory cache
+    scanAndCacheInventory()
+    
+    -- Scan cached fishes
+    for _, fishEntry in ipairs(inventoryCache.fishes) do
+        if fishEntry.uuid and not inventoryWatcher:isEquipped(fishEntry.uuid) then
             if shouldTradeFish(fishEntry) then
-                -- Check if already queued
-                local alreadyQueued = false
-                for _, queuedItem in ipairs(tradeQueue) do
-                    if queuedItem.uuid == fishUuid then
-                        alreadyQueued = true
-                        break
-                    end
-                end
-                
-                if not alreadyQueued then
-                    local fishId = fishEntry.Id or fishEntry.id
-                    local fishName = inventoryWatcher:_resolveName("Fishes", fishId)
-                    
-                    table.insert(tradeQueue, {
-                        uuid = fishUuid,
-                        name = fishName,
-                        category = "Fishes",
-                        metadata = fishEntry.Metadata
-                    })
-                end
+                table.insert(tradeQueue, {
+                    uuid = fishEntry.uuid,
+                    name = fishEntry.name,
+                    category = "Fishes",
+                    metadata = fishEntry.metadata
+                })
             end
         end
     end
     
-    -- Scan items
-    local itemSnapshot = inventoryWatcher:getSnapshotTyped("Items")
-    for _, itemEntry in ipairs(itemSnapshot) do
-        local itemUuid = itemEntry.UUID or itemEntry.Uuid or itemEntry.uuid
-        
-        if itemUuid and not inventoryWatcher:isEquipped(itemUuid) and not pendingTrades[itemUuid] then
+    -- Scan cached items
+    for _, itemEntry in ipairs(inventoryCache.items) do
+        if itemEntry.uuid and not inventoryWatcher:isEquipped(itemEntry.uuid) then
             if shouldTradeItem(itemEntry) then
-                -- Check if already queued
-                local alreadyQueued = false
-                for _, queuedItem in ipairs(tradeQueue) do
-                    if queuedItem.uuid == itemUuid then
-                        alreadyQueued = true
-                        break
-                    end
-                end
-                
-                if not alreadyQueued then
-                    local itemId = itemEntry.Id or itemEntry.id
-                    local itemName = inventoryWatcher:_resolveName("Items", itemId)
-                    
-                    table.insert(tradeQueue, {
-                        uuid = itemUuid,
-                        name = itemName,
-                        category = "Items"
-                    })
-                end
+                table.insert(tradeQueue, {
+                    uuid = itemEntry.uuid,
+                    name = itemEntry.name,
+                    category = "Items"
+                })
             end
         end
+    end
+    
+    if #tradeQueue > 0 then
+        print("[AutoSendTrade] Found", #tradeQueue, "tradable items in queue")
     end
 end
 
 local function processTradeQueue()
-    if not running or #tradeQueue == 0 or isProcessing then return end
+    if not running or #tradeQueue == 0 or isProcessing or pendingTrade then 
+        return 
+    end
     
     local currentTime = tick()
     if currentTime - lastTradeTime < TRADE_DELAY then return end
-    
-    -- Check batch limits
-    if tradeCount >= MAX_TRADES_PER_BATCH then
-        if currentTime - lastTradeTime < BATCH_DELAY then return end
-        tradeCount = 0 -- Reset batch counter
-    end
     
     isProcessing = true
     
@@ -250,13 +274,24 @@ local function processTradeQueue()
     end
     
     -- Double-check item still exists and not equipped
-    local currentItems = inventoryWatcher:getSnapshotTyped(nextItem.category)
     local itemExists = false
-    for _, item in ipairs(currentItems) do
-        local uuid = item.UUID or item.Uuid or item.uuid
-        if uuid == nextItem.uuid and not inventoryWatcher:isEquipped(uuid) then
-            itemExists = true
-            break
+    if nextItem.category == "Fishes" then
+        local currentItems = inventoryWatcher:getSnapshotTyped("Fishes")
+        for _, item in ipairs(currentItems) do
+            local uuid = item.UUID or item.Uuid or item.uuid
+            if uuid == nextItem.uuid and not inventoryWatcher:isEquipped(uuid) then
+                itemExists = true
+                break
+            end
+        end
+    else
+        local currentItems = inventoryWatcher:getSnapshotTyped("Items")
+        for _, item in ipairs(currentItems) do
+            local uuid = item.UUID or item.Uuid or item.uuid
+            if uuid == nextItem.uuid and not inventoryWatcher:isEquipped(uuid) then
+                itemExists = true
+                break
+            end
         end
     end
     
@@ -269,17 +304,18 @@ local function processTradeQueue()
     -- Send trade
     local targetPlayerId = getRandomTargetPlayerId()
     if targetPlayerId then
-        local success = sendTradeRequest(nextItem.uuid, targetPlayerId, nextItem.name)
+        local success = sendTradeRequest(targetPlayerId, nextItem.uuid, nextItem.name)
         
         if success then
-            pendingTrades[nextItem.uuid] = {
+            pendingTrade = {
                 item = nextItem,
                 timestamp = currentTime,
                 targetPlayerId = targetPlayerId
             }
-            tradeCount += 1
             lastTradeTime = currentTime
         end
+    else
+        print("[AutoSendTrade] No target players available")
     end
     
     isProcessing = false
@@ -290,12 +326,17 @@ local function setupNotificationListener()
     
     textNotificationRemote.OnClientEvent:Connect(function(data)
         if data and data.Text then
-            if data.Text == "Trade completed!" then
-                -- Clear pending trades (simple approach)
-                table.clear(pendingTrades)
-                print("[AutoSendTrade] Trade completed! Total:", tradeCount)
-            elseif data.Text == "Sent trade request!" then
-                print("[AutoSendTrade] Trade request sent successfully")
+            if string.find(data.Text, "Trade completed") or 
+               string.find(data.Text, "Trade cancelled") or
+               string.find(data.Text, "Trade expired") or
+               string.find(data.Text, "Trade declined") then
+                -- Clear pending trade so we can send next one
+                if pendingTrade then
+                    print("[AutoSendTrade] Trade finished:", data.Text, "- Item:", pendingTrade.item.name)
+                    pendingTrade = nil
+                end
+            elseif string.find(data.Text, "Sent trade request") then
+                print("[AutoSendTrade] Trade request acknowledged by server")
             end
         end
     end)
@@ -308,7 +349,7 @@ local function mainLoop()
     processTradeQueue()
 end
 
--- === Interface Methods (lifecycle seperti versi lama) ===
+-- === Interface Methods ===
 
 function AutoSendTrade:Init(guiControls)
     print("[AutoSendTrade] Initializing...")
@@ -321,9 +362,10 @@ function AutoSendTrade:Init(guiControls)
     -- Initialize inventory watcher
     inventoryWatcher = InventoryWatcher.new()
     
-    -- Wait for inventory watcher to be ready
+    -- Wait for inventory watcher to be ready and scan inventory
     inventoryWatcher:onReady(function()
-        print("[AutoSendTrade] Inventory watcher ready")
+        print("[AutoSendTrade] Inventory watcher ready, scanning inventory...")
+        scanAndCacheInventory()
     end)
     
     -- Setup notification listener
@@ -360,11 +402,15 @@ function AutoSendTrade:Start(config)
         if config.playerList then
             self:SetSelectedPlayers(config.playerList)
         end
+        if config.tradeDelay then
+            self:SetTradeDelay(config.tradeDelay)
+        end
     end
     
     running = true
-    tradeCount = 0
     isProcessing = false
+    pendingTrade = nil
+    totalTradesSent = 0
     
     -- Start main loop
     hbConn = RunService.Heartbeat:Connect(function()
@@ -374,7 +420,7 @@ function AutoSendTrade:Start(config)
         end
     end)
     
-    print("[AutoSendTrade] Started")
+    print("[AutoSendTrade] Started with delay:", TRADE_DELAY, "seconds")
 end
 
 function AutoSendTrade:Stop()
@@ -394,9 +440,9 @@ function AutoSendTrade:Stop()
     
     -- Clear queues
     table.clear(tradeQueue)
-    table.clear(pendingTrades)
+    pendingTrade = nil
     
-    print("[AutoSendTrade] Stopped")
+    print("[AutoSendTrade] Stopped. Total trades sent:", totalTradesSent)
 end
 
 function AutoSendTrade:Cleanup()
@@ -413,13 +459,14 @@ function AutoSendTrade:Cleanup()
     table.clear(selectedItemNames)
     table.clear(selectedPlayers)
     table.clear(tradeQueue)
-    table.clear(pendingTrades)
     table.clear(fishNamesCache)
+    table.clear(inventoryCache)
     
     tradeRemote = nil
     textNotificationRemote = nil
     lastTradeTime = 0
-    tradeCount = 0
+    pendingTrade = nil
+    totalTradesSent = 0
     
     print("[AutoSendTrade] Cleaned up")
 end
@@ -525,6 +572,30 @@ function AutoSendTrade:GetAvailableFish()
     return getFishNames()
 end
 
+function AutoSendTrade:GetCachedFishInventory()
+    local fishes = {}
+    for _, fish in ipairs(inventoryCache.fishes or {}) do
+        table.insert(fishes, {
+            name = fish.name,
+            uuid = fish.uuid,
+            equipped = inventoryWatcher and inventoryWatcher:isEquipped(fish.uuid) or false
+        })
+    end
+    return fishes
+end
+
+function AutoSendTrade:GetCachedItemInventory()
+    local items = {}
+    for _, item in ipairs(inventoryCache.items or {}) do
+        table.insert(items, {
+            name = item.name,
+            uuid = item.uuid,
+            equipped = inventoryWatcher and inventoryWatcher:isEquipped(item.uuid) or false
+        })
+    end
+    return items
+end
+
 function AutoSendTrade:GetOnlinePlayers()
     local players = {}
     for _, player in ipairs(Players:GetPlayers()) do
@@ -572,8 +643,11 @@ function AutoSendTrade:GetStatus()
         selectedItemCount = table.count(selectedItemNames),
         selectedPlayerCount = table.count(selectedPlayers),
         queueLength = #tradeQueue,
-        completedTrades = tradeCount,
-        isProcessing = isProcessing
+        hasPendingTrade = pendingTrade ~= nil,
+        totalTradesSent = totalTradesSent,
+        tradeDelay = TRADE_DELAY,
+        isProcessing = isProcessing,
+        inventoryCacheSize = (inventoryCache and (#inventoryCache.fishes + #inventoryCache.items)) or 0
     }
 end
 
@@ -596,6 +670,9 @@ function AutoSendTrade:DumpStatus()
     print("Selected Fish:", self:GetSelectedFish())
     print("Selected Items:", self:GetSelectedItems())
     print("Selected Players:", self:GetSelectedPlayers())
+    if pendingTrade then
+        print("Pending Trade:", pendingTrade.item.name, "to player", pendingTrade.targetPlayerId)
+    end
 end
 
 function AutoSendTrade:DumpQueue()
@@ -604,6 +681,18 @@ function AutoSendTrade:DumpQueue()
         print(i, item.name, item.category, item.uuid)
     end
     print("Queue length:", #tradeQueue)
+end
+
+function AutoSendTrade:DumpInventoryCache()
+    print("=== Inventory Cache ===")
+    print("Fishes:", #(inventoryCache.fishes or {}))
+    print("Items:", #(inventoryCache.items or {}))
+end
+
+-- === Refresh Method ===
+function AutoSendTrade:RefreshInventory()
+    scanAndCacheInventory()
+    return true
 end
 
 return AutoSendTrade
