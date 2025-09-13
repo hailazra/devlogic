@@ -243,7 +243,8 @@ local FEATURE_URLS = {
     AutoFavoriteFish   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofavoritefish.lua",
     AutoTeleportPlayer = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportplayer.lua",
     BoostFPS           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/boostfps.lua",
-    AutoSendTrade      = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosendtrade.lua"
+    AutoSendTrade      = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosendtrade.lua",
+    AutoAcceptTrade    = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoaccepttrade.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -302,6 +303,7 @@ local function preloadAllFeatures()
         "AutoEnchantRod",
         "AutoFavoriteFish",
         "AutoSendTrade",
+        "AutoAcceptTrade",
         "FishWebhook",       -- Notification features
         "AutoBuyWeather",    -- Shop features
         "AutoBuyBait",
@@ -1500,7 +1502,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
             -- Load feature jika belum ada
             if not autoAcceptTradeFeature then
                 print("[AutoAcceptTrade] Loading feature...")
-                autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade", {
+                autoAcceptTradeFeature = FeatureManager:GetFeature("AutoAcceptTrade", {
                     intervalInput = acceptinterval_in,
                     toggle = autogiftacc_tgl
                 })
