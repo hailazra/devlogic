@@ -277,8 +277,8 @@ local function setupNotificationListener()
             local text = data.Text:lower()
             
             -- Check untuk trade complete
-            if string.find(text, "trade complete") or 
-               string.find(text, "trade successful") or
+            if string.find(text, "Trade completed!") or 
+               string.find(text, "Trade completed") or
                string.find(text, "trade accepted") then
                 
                 print("[AutoAcceptTrade] Trade completed! Stopping spam")
