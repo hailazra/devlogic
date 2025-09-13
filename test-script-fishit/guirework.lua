@@ -1505,6 +1505,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
             if not autoAcceptTradeFeature then
                 autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade", {
                     DebugPrint = false,  -- bisa diubah ke true untuk debug
+                    EnhancedDebug = true,
                     ClicksPerSecond = 18,
                     EdgePaddingFrac = 0,  -- padding kecil untuk akurasi
                 })
