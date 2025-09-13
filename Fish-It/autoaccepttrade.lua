@@ -17,7 +17,7 @@ local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 local CONFIG = {
     -- Target rect (ABSOLUTE, tetap di PC/Mobile kata kamu)
     Rect = {
-        X = 277.137,
+        X = 291.137,
         Y = 137.208,
         W = 80.738,
         H = 22.812,
