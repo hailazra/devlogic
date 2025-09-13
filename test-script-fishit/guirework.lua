@@ -939,7 +939,7 @@ local selectedTiers = {}
 -- Dropdown: start dengan tier default, akan di-reload saat feature dimuat
 local favfish_ddm = favfish_sec:Dropdown({
     Title     = "Select Rarity",
-    Values    = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common" }, -- default fallback
+    Values    = rarityName, -- default fallback
     Value     = {},
     Multi     = true,
     AllowNone = true,
