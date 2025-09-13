@@ -8,7 +8,7 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
 -- Dependencies
-local InventoryWatcher = _G.InventoryWatcher or loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
+local InventoryWatcher = _G.InventoryWatcher or require(script.Parent["inventdetectfishit"])
 
 -- State
 local running = false
@@ -20,7 +20,7 @@ local selectedTiers = {} -- set: { [tierNumber] = true } for fish
 local selectedItems = {} -- set: { ["Enchant Stone"] = true } for items
 local selectedPlayers = {} -- set: { [playerName] = true }
 local TICK_STEP = 0.5 -- throttle interval
-local TRADE_DELAY = 6.0 -- delay between trade requests
+local TRADE_DELAY = 5.0 -- delay between trade requests
 
 -- Cache
 local fishDataCache = {} -- { [fishId] = fishData }
@@ -411,6 +411,7 @@ function AutoSendTrade:Cleanup()
     table.clear(selectedItems)
     table.clear(selectedPlayers)
     table.clear(tradeQueue)
+    table.clear(pendingTrades)
     
     tradeRemote = nil
     textNotificationRemote = nil
