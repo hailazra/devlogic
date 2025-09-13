@@ -1,5 +1,6 @@
--- File: autoaccepttrade_dynamic.lua
+-- File: autoaccepttrade_dynamic_patched.lua
 -- Mode: DYNAMIC BUTTON DETECTION - mengambil posisi langsung dari ImageButton Yes
+-- PATCHED VERSION - Fixed positioning issues
 -- Start when Prompt.Enabled = true atau NotifyAwaitTradeResponse() dipanggil.
 -- Stop saat RE/TextNotification mengandung "trade complete"/cancelled, Prompt dimatikan, atau timeout.
 
@@ -10,6 +11,8 @@ AutoAcceptTradeSpam.__index = AutoAcceptTradeSpam
 local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService          = game:GetService("GuiService")
+local UserInputService    = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
@@ -26,6 +29,12 @@ local CONFIG = {
     
     -- Opsi untuk debug
     DebugPrint      = false,     -- print posisi button saat ditemukan
+    EnhancedDebug   = false,     -- detailed debug info
+    
+    -- Timing options
+    UILoadDelay     = 0.3,       -- delay setelah prompt enabled
+    ClickDelay      = 0.02,      -- delay antara mouse down/up
+    RetryDelay      = 0.2,       -- delay untuk retry
 
     StopOnTextMatches = { "trade completed!", "Trade completed!", "trade successful" },
     StopOnFailMatches = { "trade cancelled", "trade canceled", "trade declined", "trade expired", "trade failed" },
@@ -45,6 +54,12 @@ local textNotifRE       = nil
 local notifConn         = nil
 
 -- ================== HELPERS ==================
+local function debugPrint(...)
+    if CONFIG.DebugPrint or CONFIG.EnhancedDebug then
+        print("[AutoAcceptTradeSpam]", ...)
+    end
+end
+
 local function findNetRemote(name)
     local packages = ReplicatedStorage:FindFirstChild("Packages")
     if packages then
@@ -81,34 +96,72 @@ local function getPromptGui()
     return (g and g:IsA("ScreenGui")) and g or nil
 end
 
+local function isButtonValid(button)
+    return button and 
+           button.Parent and 
+           button.Visible and 
+           button.Active and 
+           button.AbsoluteSize.Magnitude > 0 and
+           button:IsDescendantOf(PlayerGui)
+end
+
 local function findYesButton(gui)
     if not gui then return nil end
     
-    -- Search untuk ImageButton bernama "Yes" di dalam Prompt
     local function searchInDescendants(parent)
         for _, child in ipairs(parent:GetDescendants()) do
             if child:IsA("ImageButton") and child.Name == CONFIG.YesButtonName then
-                return child
+                if isButtonValid(child) then
+                    debugPrint("Found valid Yes button:", child:GetFullName())
+                    return child
+                else
+                    debugPrint("Found Yes button but invalid state:", child.Name, "Visible:", child.Visible, "Active:", child.Active)
+                end
             end
         end
         return nil
     end
     
-    return searchInDescendants(gui)
+    local button = searchInDescendants(gui)
+    
+    -- Enhanced debug: show all ImageButtons if target not found
+    if not button and CONFIG.EnhancedDebug then
+        debugPrint("=== ALL IMAGEBUTTONS IN PROMPT ===")
+        for _, child in ipairs(gui:GetDescendants()) do
+            if child:IsA("ImageButton") then
+                debugPrint("ImageButton:", child.Name, "Visible:", child.Visible, "Active:", child.Active, "Size:", child.AbsoluteSize)
+            end
+        end
+    end
+    
+    return button
 end
 
 local function getButtonRect(button)
-    if not button then return nil end
+    if not isButtonValid(button) then return nil end
     
     local absPos = button.AbsolutePosition
     local absSize = button.AbsoluteSize
     
-    return {
+    -- Get GUI inset untuk kompensasi topbar/etc
+    local guiInset = GuiService:GetGuiInset()
+    
+    local rect = {
         X = absPos.X,
-        Y = absPos.Y,
+        Y = absPos.Y + guiInset.Y,
         W = absSize.X,
         H = absSize.Y
     }
+    
+    if CONFIG.EnhancedDebug then
+        debugPrint("Button rect calculation:")
+        debugPrint("  AbsolutePosition:", absPos)
+        debugPrint("  AbsoluteSize:", absSize)
+        debugPrint("  GuiInset:", guiInset)
+        debugPrint("  Final rect:", rect.X, rect.Y, rect.W, rect.H)
+    end
+    
+    return rect
 end
 
 local function randomPointInRect(rect)
@@ -121,40 +174,82 @@ local function randomPointInRect(rect)
     local maxY = rect.Y + rect.H * (1 - pad)
     local x = minX + (maxX - minX) * math.random()
     local y = minY + (maxY - minY) * math.random()
+    
+    debugPrint("Random click point:", x, y, "in rect:", rect.X, rect.Y, rect.W, rect.H)
     return x, y
 end
 
 local function clickXY(x, y)
-    if not x or not y then return end
+    if not x or not y then 
+        debugPrint("Invalid click coordinates:", x, y)
+        return 
+    end
     
-    if CONFIG.AlsoMoveMouse and VirtualInputManager then
+    local success = false
+    
+    -- Method 1: VirtualInputManager
+    if CONFIG.UseVIM and VirtualInputManager then
         pcall(function()
-            VirtualInputManager:SendMouseMoveEvent(x, y, game)
+            if CONFIG.AlsoMoveMouse then
+                VirtualInputManager:SendMouseMoveEvent(x, y, game)
+                task.wait(CONFIG.ClickDelay)
+            end
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+            task.wait(CONFIG.ClickDelay)
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+            success = true
         end)
     end
-    if CONFIG.UseVIM and VirtualInputManager then
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true,  game, 0)
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+    
+    -- Method 2: Direct button fire (fallback)
+    if not success and yesButton and isButtonValid(yesButton) then
+        pcall(function()
+            -- Try to fire the button directly
+            if yesButton.MouseButton1Click then
+                yesButton.MouseButton1Click:Fire()
+                success = true
+                debugPrint("Used direct button fire fallback")
+            end
+        end)
+    end
+    
+    if CONFIG.EnhancedDebug then
+        debugPrint("Click attempted at:", x, y, "Success:", success)
     end
 end
 
 local function stopSpam(reason)
     if not spamming then return end
     stopRequested = true
-    for _ = 1, 30 do
+    for _ = 1, 50 do  -- Increased timeout
         if not spamming then break end
         task.wait(0.01)
     end
-    print(("[AutoAcceptTradeSpam] stop (%s)"):format(reason or ""))
+    debugPrint("Spam stopped:", reason or "unknown")
+end
+
+local function waitForButtonReady(gui, maxWait)
+    local deadline = tick() + (maxWait or 2)
+    while tick() < deadline do
+        local button = findYesButton(gui)
+        if button and isButtonValid(button) then
+            return button
+        end
+        task.wait(0.05)
+    end
+    return nil
 end
 
 local function startSpam()
-    if spamming then return end
+    if spamming then 
+        debugPrint("Already spamming, ignoring start request")
+        return 
+    end
     
-    -- Cari button Yes terlebih dahulu
-    yesButton = findYesButton(promptGui)
+    -- Wait for button to be ready
+    yesButton = waitForButtonReady(promptGui, 2)
     if not yesButton then
-        warn("[AutoAcceptTradeSpam] ImageButton 'Yes' tidak ditemukan!")
+        warn("[AutoAcceptTradeSpam] ImageButton 'Yes' tidak ditemukan atau tidak valid setelah menunggu!")
         return
     end
     
@@ -164,39 +259,56 @@ local function startSpam()
         return
     end
     
-    if CONFIG.DebugPrint then
-        print(("[AutoAcceptTradeSpam] Button pos: (%.3f, %.3f) size: (%.3f, %.3f)")
-            :format(rect.X, rect.Y, rect.W, rect.H))
-    end
+    debugPrint("Button validation passed - starting spam")
+    debugPrint("Button rect:", rect.X, rect.Y, rect.W, rect.H)
     
     spamming = true
     stopRequested = false
 
     spamThread = task.spawn(function()
         local started = tick()
-        print(("[AutoAcceptTradeSpam] spam start pada Yes button @ (%.3f, %.3f, %.3f, %.3f)")
+        print(("[AutoAcceptTradeSpam] Spam dimulai pada Yes button @ (%.1f, %.1f) size: (%.1f, %.1f)")
             :format(rect.X, rect.Y, rect.W, rect.H))
 
-        while spamming do
+        local clickCount = 0
+        while spamming and running do
             if stopRequested then break end
             
-            -- Update rect setiap loop untuk handle perubahan posisi
-            local currentRect = getButtonRect(yesButton)
-            if currentRect then
-                local x, y = randomPointInRect(currentRect)
-                if x and y then
-                    clickXY(x, y)
+            -- Validate button masih ada dan valid
+            if not isButtonValid(yesButton) then
+                debugPrint("Button became invalid, stopping spam")
+                break
+            end
+            
+            -- Update rect setiap beberapa click untuk handle perubahan posisi
+            if clickCount % 5 == 0 then
+                local currentRect = getButtonRect(yesButton)
+                if currentRect then
+                    rect = currentRect
+                else
+                    debugPrint("Could not get current button rect")
+                    break
                 end
+            end
+            
+            local x, y = randomPointInRect(rect)
+            if x and y then
+                clickXY(x, y)
+                clickCount = clickCount + 1
             end
 
             local base = 1 / math.clamp(CONFIG.ClicksPerSecond, 6, 40)
-            task.wait(base + (math.random() - 0.5) * base * 0.35)
+            local jitter = (math.random() - 0.5) * base * 0.35
+            task.wait(base + jitter)
 
             if (tick() - started) > CONFIG.MaxSpamSeconds then
+                debugPrint("Max spam time reached")
                 break
             end
         end
+        
         spamming = false
+        debugPrint("Spam loop ended, total clicks:", clickCount)
     end)
 end
 
@@ -209,16 +321,25 @@ local function bindTextNotifications()
             local txt = type(payload) == "table" and payload.Text or payload
             if not txt then return end
             local t = tostring(txt):lower()
+            
             for _, k in ipairs(CONFIG.StopOnTextMatches) do
-                if string.find(t, k, 1, true) then stopSpam("complete"); return end
+                if string.find(t, k:lower(), 1, true) then 
+                    stopSpam("trade completed")
+                    debugPrint("Trade completed notification received:", txt)
+                    return 
+                end
             end
             for _, k in ipairs(CONFIG.StopOnFailMatches) do
-                if string.find(t, k, 1, true) then stopSpam("cancelled"); return end
+                if string.find(t, k:lower(), 1, true) then 
+                    stopSpam("trade failed/cancelled")
+                    debugPrint("Trade failed/cancelled notification received:", txt)
+                    return 
+                end
             end
         end)
-        print("[AutoAcceptTradeSpam] bound RE/TextNotification")
+        debugPrint("Bound to RE/TextNotification")
     else
-        warn("[AutoAcceptTradeSpam] RE/TextNotification not found (auto-stop via notif off)")
+        warn("[AutoAcceptTradeSpam] RE/TextNotification not found - auto-stop via notification disabled")
     end
 end
 
@@ -227,15 +348,29 @@ local function unbindPrompt()
     if promptAncestryConn then promptAncestryConn:Disconnect(); promptAncestryConn = nil end
     promptGui = nil
     yesButton = nil
+    debugPrint("Unbound from prompt")
 end
 
 local function onPromptEnabledChanged()
     if not running then return end
     if not promptGui then return end
+    
     if promptGui.Enabled then
-        task.delay(0.1, function()  -- delay lebih lama untuk pastikan UI ready
+        debugPrint("Prompt enabled, waiting for UI to load...")
+        task.delay(CONFIG.UILoadDelay, function()
             if running and promptGui and promptGui.Enabled then
-                startSpam()
+                local button = findYesButton(promptGui)
+                if button and isButtonValid(button) then
+                    startSpam()
+                else
+                    debugPrint("Button not ready, retrying...")
+                    -- Retry after additional delay
+                    task.delay(CONFIG.RetryDelay, function()
+                        if running and promptGui and promptGui.Enabled then
+                            startSpam()
+                        end
+                    end)
+                end
             end
         end)
     else
@@ -247,31 +382,43 @@ local function bindPrompt()
     unbindPrompt()
     promptGui = getPromptGui()
     if not promptGui then
+        debugPrint("Prompt GUI not found, waiting...")
         -- tunggu Prompt muncul
         task.spawn(function()
-            local deadline = os.clock() + 3
+            local deadline = os.clock() + 5  -- Increased wait time
             while running and (os.clock() < deadline) and not promptGui do
                 promptGui = getPromptGui()
                 if promptGui then break end
-                task.wait(0.05)
+                task.wait(0.1)  -- Less frequent checks
             end
-            if running and promptGui then bindPrompt() end
+            if running and promptGui then 
+                debugPrint("Prompt GUI found after waiting")
+                bindPrompt() 
+            else
+                debugPrint("Prompt GUI not found within timeout")
+            end
         end)
         return
     end
 
+    debugPrint("Binding to Prompt GUI:", promptGui:GetFullName())
+
     promptAncestryConn = promptGui.AncestryChanged:Connect(function()
         task.delay(0, function()
             if not promptGui or not promptGui:IsDescendantOf(PlayerGui) then
+                debugPrint("Prompt GUI ancestry changed, rebinding...")
                 bindPrompt()
             end
         end)
     end)
 
     promptEnabledConn = promptGui:GetPropertyChangedSignal("Enabled"):Connect(onPromptEnabledChanged)
-    print("[AutoAcceptTradeSpam] bound Prompt.Enabled watcher")
+    debugPrint("Bound Prompt.Enabled watcher")
 
-    if promptGui.Enabled then onPromptEnabledChanged() end
+    if promptGui.Enabled then 
+        debugPrint("Prompt already enabled, triggering handler")
+        onPromptEnabledChanged() 
+    end
 end
 
 -- ================== PUBLIC API ==================
@@ -283,29 +430,41 @@ function AutoAcceptTradeSpam:Init(opts)
         end
     end
     bindTextNotifications()
-    print("[AutoAcceptTradeSpam] ready (dynamic button detection mode)")
+    debugPrint("Initialized with config:", CONFIG)
+    print("[AutoAcceptTradeSpam] Ready - Dynamic Button Detection Mode (Patched)")
     return true
 end
 
 function AutoAcceptTradeSpam:NotifyAwaitTradeResponse()
-    if not running then return end
+    if not running then 
+        debugPrint("NotifyAwaitTradeResponse called but not running")
+        return 
+    end
+    debugPrint("NotifyAwaitTradeResponse called")
     startSpam()
 end
 
 function AutoAcceptTradeSpam:Start()
-    if running then return true end
+    if running then 
+        debugPrint("Already running")
+        return true 
+    end
     running = true
+    debugPrint("Starting AutoAcceptTradeSpam")
     bindPrompt()
 
     -- kalau saat Start prompt udah nyala, langsung spam
-    task.delay(0.1, function()
+    task.delay(CONFIG.UILoadDelay, function()
         if running then
             local g = getPromptGui()
-            if g and g.Enabled then startSpam() end
+            if g and g.Enabled then 
+                debugPrint("Prompt already enabled at startup")
+                startSpam() 
+            end
         end
     end)
 
-    print("[AutoAcceptTradeSpam] started")
+    print("[AutoAcceptTradeSpam] Started")
     return true
 end
 
@@ -314,48 +473,127 @@ function AutoAcceptTradeSpam:Stop()
     running = false
     stopSpam("manual stop")
     unbindPrompt()
-    print("[AutoAcceptTradeSpam] stopped")
+    debugPrint("AutoAcceptTradeSpam stopped")
     return true
 end
 
 function AutoAcceptTradeSpam:Cleanup()
     self:Stop()
     if notifConn then notifConn:Disconnect(); notifConn = nil end
+    debugPrint("Cleanup completed")
 end
 
 -- Utility functions
 function AutoAcceptTradeSpam:SetYesButtonName(name)
     CONFIG.YesButtonName = name
+    debugPrint("Yes button name set to:", name)
 end
 
 function AutoAcceptTradeSpam:EnableDebug(enable)
     CONFIG.DebugPrint = enable or true
+    debugPrint("Debug mode:", enable and "enabled" or "disabled")
 end
 
--- Manual function untuk test posisi button
+function AutoAcceptTradeSpam:EnableEnhancedDebug(enable)
+    CONFIG.EnhancedDebug = enable or true
+    CONFIG.DebugPrint = enable or true  -- Enhanced debug implies regular debug
+    debugPrint("Enhanced debug mode:", enable and "enabled" or "disabled")
+end
+
+function AutoAcceptTradeSpam:SetUILoadDelay(delay)
+    CONFIG.UILoadDelay = delay or 0.3
+    debugPrint("UI load delay set to:", CONFIG.UILoadDelay)
+end
+
+function AutoAcceptTradeSpam:GetStatus()
+    return {
+        running = running,
+        spamming = spamming,
+        promptGui = promptGui and promptGui:GetFullName() or "nil",
+        yesButton = yesButton and yesButton:GetFullName() or "nil"
+    }
+end
+
+-- Enhanced test function
 function AutoAcceptTradeSpam:TestButtonPosition()
+    print("=== BUTTON POSITION TEST ===")
+    
     local gui = getPromptGui()
     if not gui then
-        print("Prompt GUI tidak ditemukan!")
-        return
+        print("❌ Prompt GUI tidak ditemukan!")
+        return false
     end
+    print("✅ Prompt GUI ditemukan:", gui:GetFullName())
+    print("   Enabled:", gui.Enabled)
     
     local button = findYesButton(gui)
     if not button then
-        print("Button 'Yes' tidak ditemukan!")
-        return
+        print("❌ Button 'Yes' tidak ditemukan!")
+        
+        -- Show all ImageButtons for debugging
+        print("\n=== ALL IMAGEBUTTONS IN PROMPT ===")
+        local found = 0
+        for _, child in ipairs(gui:GetDescendants()) do
+            if child:IsA("ImageButton") then
+                found = found + 1
+                print(("  %d. %s - Visible: %s, Active: %s, Size: %s"):format(
+                    found, child.Name, tostring(child.Visible), 
+                    tostring(child.Active), tostring(child.AbsoluteSize)
+                ))
+            end
+        end
+        if found == 0 then
+            print("  Tidak ada ImageButton ditemukan!")
+        end
+        return false
     end
     
+    print("✅ Button 'Yes' ditemukan:", button:GetFullName())
+    print("   Valid:", isButtonValid(button))
+    print("   Visible:", button.Visible)
+    print("   Active:", button.Active)
+    print("   Size:", button.AbsoluteSize)
+    
     local rect = getButtonRect(button)
-    if rect then
-        print(("Button 'Yes' ditemukan - Pos: (%.3f, %.3f) Size: (%.3f, %.3f)")
-            :format(rect.X, rect.Y, rect.W, rect.H))
-        
-        -- Test click sekali
+    if not rect then
+        print("❌ Tidak bisa mendapatkan posisi button!")
+        return false
+    end
+    
+    print("\n=== POSITION INFO ===")
+    print("AbsolutePosition:", button.AbsolutePosition)
+    print("AbsoluteSize:", button.AbsoluteSize)
+    print("GuiInset:", GuiService:GetGuiInset())
+    print("Calculated Rect:", rect.X, rect.Y, rect.W, rect.H)
+    
+    -- Test multiple clicks
+    print("\n=== TESTING CLICKS ===")
+    for i = 1, 3 do
         local x, y = randomPointInRect(rect)
         if x and y then
-            print(("Test click di: (%.3f, %.3f)"):format(x, y))
+            print(("Test click %d: (%.1f, %.1f)"):format(i, x, y))
             clickXY(x, y)
+            task.wait(0.8)  -- Longer delay between test clicks
+        end
+    end
+    
+    return true
+end
+
+-- Quick test function
+function AutoAcceptTradeSpam:QuickTest()
+    local gui = getPromptGui()
+    local button = gui and findYesButton(gui)
+    
+    print("Quick Test Results:")
+    print("  Prompt GUI:", gui and "✅ Found" or "❌ Not found")
+    print("  Yes Button:", button and "✅ Found" or "❌ Not found")
+    print("  Button Valid:", button and isButtonValid(button) and "✅ Valid" or "❌ Invalid")
+    
+    if button and isButtonValid(button) then
+        local rect = getButtonRect(button)
+        if rect then
+            print(("  Position: (%.1f, %.1f) Size: (%.1f, %.1f)"):format(rect.X, rect.Y, rect.W, rect.H))
         end
     end
 end
