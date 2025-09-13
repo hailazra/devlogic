@@ -1,4 +1,4 @@
---- AutoAcceptTrade.lua - Auto Accept Trade Requests (PURE DIRECT HOOK)
+--- AutoAcceptTrade.lua - Auto Accept Trade Requests (PURE DIRECT HOOK) ----
 local AutoAcceptTrade = {}
 AutoAcceptTrade.__index = AutoAcceptTrade
 
