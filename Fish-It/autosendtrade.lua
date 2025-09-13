@@ -1,332 +1,581 @@
--- ===========================
--- AUTO SEND TRADE FEATURE
--- File: autosendtradeFeature.lua
--- ===========================
+-- Fish-It/autosendtrade.lua
+local AutoSendTrade = {}
+AutoSendTrade.__index = AutoSendTrade
 
---[[  Wiring yang disiapkan GUI:
-    - Multi dropdown Rarity (list string)
-    - Multi dropdown Enchant Stone (list string, dari Items)
-    - Button "Refresh Player List" -> panggil autosendtradeFeature.RefreshPlayers()
-    - Toggle aktif/nonaktif -> autosendtradeFeature.SetActive(true/false)
-    - (Opsional) Dropdown single target player -> autosendtradeFeature.SetTargetByUserId(userId)
-]]
+-- Services
+local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
-local autosendtradeFeature = {}
-autosendtradeFeature.__index = autosendtradeFeature
+-- Dependencies
+local InventoryWatcher = loadstring(game:HttpGet("https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/debug-script/inventdetectfishit.lua"))()
 
--- ======= Services =======
-local Players              = game:GetService("Players")
-local ReplicatedStorage    = game:GetService("ReplicatedStorage")
-local RunService           = game:GetService("RunService")
-local LocalPlayer          = Players.LocalPlayer
+-- State
+local running = false
+local hbConn = nil
+local inventoryWatcher = nil
 
--- ======= Config =======
-local TICK_STEP        = 0.25         -- throttle loop
-local TRADE_COOLDOWN   = 1.0          -- minimal jeda antar request
-local PROPAGATE_DELAY  = 0.35         -- kasih waktu state inventory/notif nyusul
+-- Configuration
+local selectedTiers = {} -- set: { [tierNumber] = true } for fish
+local selectedItems = {} -- set: { ["Enchant Stone"] = true } for items
+local selectedPlayers = {} -- set: { [playerName] = true }
+local TICK_STEP = 0.5 -- throttle interval
+local TRADE_DELAY = 1.0 -- delay between trade requests
 
--- ======= Net Path (sleitnick_net) =======
-local Net
-do
-    -- Robust ke perbedaan _Index key
-    local Packages = ReplicatedStorage:FindFirstChild("Packages")
-    if Packages and Packages:FindFirstChild("_Index") then
-        local idx = Packages._Index
-        for _, child in ipairs(idx:GetChildren()) do
-            if child.Name:match("sleitnick_net") then
-                local mod = child:FindFirstChild("net")
-                if mod then Net = mod break end
+-- Cache
+local fishDataCache = {} -- { [fishId] = fishData }
+local itemDataCache = {} -- { [itemId] = itemData }  
+local tierDataCache = {} -- { [tierNumber] = tierInfo }
+local lastTradeTime = 0
+local tradeQueue = {} -- queue of { uuid, targetPlayerId, itemName, tierName }
+
+-- Remotes
+local tradeRemote = nil
+local textNotificationRemote = nil
+
+-- === Helper Functions ===
+
+local function loadTierData()
+    local success, tierModule = pcall(function()
+        return RS:WaitForChild("Tiers", 5)
+    end)
+    
+    if not success or not tierModule then
+        warn("[AutoSendTrade] Failed to find Tiers module")
+        return false
+    end
+    
+    local success2, tierList = pcall(function()
+        return require(tierModule)
+    end)
+    
+    if not success2 or not tierList then
+        warn("[AutoSendTrade] Failed to load Tiers data")
+        return false
+    end
+    
+    -- Cache tier data
+    for _, tierInfo in ipairs(tierList) do
+        tierDataCache[tierInfo.Tier] = tierInfo
+    end
+    
+    return true
+end
+
+local function scanFishData()
+    local itemsFolder = RS:FindFirstChild("Items")
+    if not itemsFolder then
+        warn("[AutoSendTrade] Items folder not found")
+        return false
+    end
+    
+    local function scanRecursive(folder)
+        for _, child in ipairs(folder:GetChildren()) do
+            if child:IsA("ModuleScript") then
+                local success, data = pcall(function()
+                    return require(child)
+                end)
+                
+                if success and data and data.Data then
+                    local itemData = data.Data
+                    if itemData.Type == "Fishes" and itemData.Id and itemData.Tier then
+                        fishDataCache[itemData.Id] = itemData
+                    elseif itemData.Type == "Items" and itemData.Id then
+                        itemDataCache[itemData.Id] = itemData
+                    end
+                end
+            elseif child:IsA("Folder") then
+                scanRecursive(child)
             end
         end
     end
+    
+    scanRecursive(itemsFolder)
+    return next(fishDataCache) ~= nil or next(itemDataCache) ~= nil
 end
 
-if not Net then
-    warn("[autosendtrade] sleitnick_net not found; pastikan path benar.")
-end
-
-local RF_InitiateTrade = Net and Net:FindFirstChild("RF/InitiateTrade")
-local RE_TextNotification = Net and Net:FindFirstChild("RE/TextNotification")
-
--- ======= Inventory Accessor (samain dgn autofavoritefish) =======
--- Harap sudah ada inventoryWatcher:getSnapshotTyped("Fishes"|"Items")
--- Jika belum, kamu bisa adapt ke sistemmu sendiri.
-local inventoryWatcher = _G.inventoryWatcher  -- pakai global yang sama seperti modul lain (optional)
-
--- ======= State =======
-local running           = false
-local selectedTargetId  = nil              -- number (UserId)
-local selectedRarities  = {}               -- set[string] -> true
-local selectedStones    = {}               -- set[string] -> true (by item Name)
-local lastTick          = 0
-local lastTradeTime     = 0
-local tradeInFlight     = false            -- untuk hold sebentar setelah Invoke
-local tradeQueue        = {}               -- FIFO of UUIDs to send
-local queuedOrSent      = {}               -- [uuid] = true (anti duplikat)
-local connections       = {}
-
--- ======= Utils =======
-local function now()
-    return tick()
-end
-
-local function toSet(list)
-    local t = {}
-    for _, v in ipairs(list or {}) do
-        if typeof(v) == "string" or typeof(v) == "number" then
-            t[tostring(v)] = true
-        end
+local function findTradeRemote()
+    local success, remote = pcall(function()
+        return RS:WaitForChild("Packages", 5)
+                  :WaitForChild("_Index", 5)
+                  :WaitForChild("sleitnick_net@0.2.0", 5)
+                  :WaitForChild("net", 5)
+                  :WaitForChild("RF/InitiateTrade", 5)
+    end)
+    
+    if success and remote then
+        tradeRemote = remote
+        return true
     end
-    return t
-end
-
-local function getUUID(entry)
-    return entry.UUID or entry.Uuid or entry.uuid
-end
-
-local function isFavorited(entry)
-    if entry.Favorited ~= nil then return entry.Favorited end
-    if entry.favorited ~= nil then return entry.favorited end
-    if entry.Metadata and entry.Metadata.Favorited ~= nil then return entry.Metadata.Favorited end
-    if entry.Metadata and entry.Metadata.favorited ~= nil then return entry.Metadata.favorited end
+    
+    warn("[AutoSendTrade] Failed to find InitiateTrade remote")
     return false
 end
 
-local function getRarity(entry)
-    -- normalisasi field rarity/tier
-    return tostring(
-        entry.Rarity or entry.rarity or entry.Tier or entry.tier or
-        (entry.Metadata and (entry.Metadata.Rarity or entry.Metadata.Tier)) or
-        ""
-    )
-end
-
-local function getName(entry)
-    return tostring(entry.Name or entry.name or entry.Id or entry.id or "")
-end
-
-local function pushQueue(uuid)
-    if not uuid or uuid == "" then return end
-    if queuedOrSent[uuid] then return end
-    table.insert(tradeQueue, uuid)
-    queuedOrSent[uuid] = true
-end
-
-local function popQueue()
-    if #tradeQueue == 0 then return nil end
-    local uuid = table.remove(tradeQueue, 1)
-    return uuid
-end
-
-local function inCooldown()
-    return (now() - lastTradeTime) < TRADE_COOLDOWN
-end
-
-local function clearConnections()
-    for _, c in ipairs(connections) do
-        pcall(function() c:Disconnect() end)
-    end
-    table.clear(connections)
-end
-
--- Bersihkan UUID yang sudah tidak ada di inventory (hindari stuck)
-local function pruneQueueWithSnapshot(allUUIDsSet)
-    -- bersihkan queuedOrSent dan tradeQueue jika itemnya sudah hilang (berhasil terkirim/terhapus)
-    local newQueue = {}
-    for _, uuid in ipairs(tradeQueue) do
-        if allUUIDsSet[uuid] then
-            table.insert(newQueue, uuid)
-        else
-            queuedOrSent[uuid] = nil
-        end
-    end
-    tradeQueue = newQueue
-end
-
--- ======= Core Collector =======
-local function collectCandidates()
-    if not inventoryWatcher then return end
-
-    local fishes = inventoryWatcher:getSnapshotTyped("Fishes")
-    local items  = inventoryWatcher:getSnapshotTyped("Items")
-
-    local allUUIDsSet = {}
-
-    -- Fishes -> filter by rarity + safety: skip favorited
-    if fishes then
-        for _, fish in ipairs(fishes) do
-            local uuid = getUUID(fish)
-            if uuid then allUUIDsSet[uuid] = true end
-
-            local rarity = getRarity(fish)
-            if uuid and not isFavorited(fish) and selectedRarities[rarity] then
-                pushQueue(uuid)
-            end
-        end
-    end
-
-    -- Items -> filter by name in selectedStones
-    if items then
-        for _, itm in ipairs(items) do
-            local uuid = getUUID(itm)
-            if uuid then allUUIDsSet[uuid] = true end
-
-            local name = getName(itm)
-            if uuid and selectedStones[name] then
-                pushQueue(uuid)
-            end
-        end
-    end
-
-    -- buang UUID yang sudah ga ada
-    pruneQueueWithSnapshot(allUUIDsSet)
-end
-
--- ======= Trade Sender =======
-local function sendOne()
-    if not running or not selectedTargetId then return end
-    if tradeInFlight or inCooldown() then return end
-    if not RF_InitiateTrade then return end
-    local uuid = popQueue()
-    if not uuid then return end
-
-    -- kirim trade
-    local ok, err = pcall(function()
-        RF_InitiateTrade:InvokeServer(tonumber(selectedTargetId), tostring(uuid))
-    end)
-
-    if not ok then
-        warn("[autosendtrade] InitiateTrade error:", err)
-        -- biarkan entry keluar dari queue, tapi tandai supaya bisa dikumpulkan lagi di scan berikutnya
-        queuedOrSent[uuid] = nil
-        return
-    end
-
-    tradeInFlight = true
-    lastTradeTime = now()
-
-    -- fallback: kalau notifikasi gak datang, lepas inFlight setelah PROPAGATE_DELAY
-    task.delay(PROPAGATE_DELAY, function()
-        tradeInFlight = false
+local function findTextNotificationRemote()
+    pcall(function()
+        textNotificationRemote = RS:WaitForChild("Packages", 5)
+                                   :WaitForChild("_Index", 5)
+                                   :WaitForChild("sleitnick_net@0.2.0", 5)
+                                   :WaitForChild("net", 5)
+                                   :WaitForChild("RE/TextNotification", 5)
     end)
 end
 
--- ======= Notifications Listener =======
-local function hookNotifications()
-    if not RE_TextNotification then return end
-    local conn = RE_TextNotification.OnClientEvent:Connect(function(payload)
-        -- payload contoh:
-        -- { Type="Text", Text="Sent trade request!", CustomDuration=3, TextColor={R=0,G=255,B=0} }
-        local text = (typeof(payload) == "table" and payload.Text) and tostring(payload.Text) or ""
-        if text:find("Sent trade request!", 1, true) then
-            -- kita sudah handle cooldown, tapi boleh log
-            -- print("[autosendtrade] sent request ack")
-            -- keep tradeInFlight false; next tick boleh lanjut
-            tradeInFlight = false
-        elseif text:find("Trade completed!", 1, true) then
-            -- print("[autosendtrade] trade completed")
-            -- No special action needed; inventoryWatcher rescan akan merapikan queue
-        end
-    end)
-    table.insert(connections, conn)
+local function shouldTradeItem(entry, category)
+    if not entry then return false end
+    
+    local itemId = entry.Id or entry.id
+    if not itemId then return false end
+    
+    if category == "Fishes" then
+        -- Check if fish should be traded based on tier
+        local fishData = fishDataCache[itemId]
+        if not fishData then return false end
+        
+        local tier = fishData.Tier
+        if not tier then return false end
+        
+        return selectedTiers[tier] == true
+        
+    elseif category == "Items" then
+        -- Check if item should be traded (currently only Enchant Stone)
+        local itemData = itemDataCache[itemId]
+        if not itemData then return false end
+        
+        local itemName = itemData.Name
+        if not itemName then return false end
+        
+        return selectedItems[itemName] == true
+    end
+    
+    return false
 end
 
--- ======= Main Loop =======
-local function loop()
-    if not running then return end
-    local t = now()
-    if (t - lastTick) < TICK_STEP then return end
-    lastTick = t
-
-    collectCandidates()
-    sendOne()
-end
-
--- ======= Public API (buat wiring GUI) =======
-function autosendtradeFeature.SetActive(state)
-    running = state and true or false
-    if running then
-        -- start loop & hook notif
-        clearConnections()
-        if RE_TextNotification then
-            hookNotifications()
+local function getRandomTargetPlayerId()
+    local availablePlayers = {}
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer and selectedPlayers[player.Name] then
+            table.insert(availablePlayers, player.UserId)
         end
-        local hb = RunService.Heartbeat:Connect(loop)
-        table.insert(connections, hb)
-    else
-        clearConnections()
-        table.clear(tradeQueue)
-        table.clear(queuedOrSent)
-        tradeInFlight = false
     end
-end
-
-local function resolveUserId(target)
-    -- Bisa: number (UserId) atau string (Name)
-    if target == nil then return nil end
-    if typeof(target) == "number" then
-        return target > 0 and target or nil
+    
+    if #availablePlayers > 0 then
+        return availablePlayers[math.random(1, #availablePlayers)]
     end
-    if typeof(target) == "string" then
-        local want = target:lower()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Name:lower() == want then
-                return p.UserId
-            end
-        end
-        -- optional: fallback case-insensitive partial match (matikan kalau anti-ambigu)
-        -- for _, p in ipairs(Players:GetPlayers()) do
-        --     if p.Name:lower():find(want, 1, true) then
-        --         return p.UserId
-        --     end
-        -- end
-    end
+    
     return nil
 end
 
-function autosendtradeFeature.SetTarget(target)
-    local uid = resolveUserId(target)
-    if uid then
-        selectedTargetId = uid
-        -- print("[autosendtrade] target set:", target, "->", uid)
+local function sendTradeRequest(uuid, targetPlayerId, itemName, tierName)
+    if not tradeRemote or not uuid or not targetPlayerId then return false end
+    
+    local success, result = pcall(function()
+        return tradeRemote:InvokeServer(targetPlayerId, uuid)
+    end)
+    
+    if success then
+        print("[AutoSendTrade] Sent trade request:", itemName, tierName or "", "to player ID", targetPlayerId)
+        return true
     else
-        selectedTargetId = nil
-        warn("[autosendtrade] target not found for:", target)
+        warn("[AutoSendTrade] Failed to send trade request:", result)
+        return false
     end
 end
 
--- listOfStrings: {"Common","Rare",...} (samain dgn value di dropdown)
-function autosendtradeFeature.SetSelectedRarities(listOfStrings)
-    selectedRarities = toSet(listOfStrings)
-    -- reset queue supaya pakai kriteria baru
-    table.clear(tradeQueue)
-    table.clear(queuedOrSent)
-end
-
--- listOfStrings: {"Enchant Stone I","Enchant Stone II",...} (samain nama yang tampil di inventory Items)
-function autosendtradeFeature.SetSelectedStones(listOfStrings)
-    selectedStones = toSet(listOfStrings)
-    table.clear(tradeQueue)
-    table.clear(queuedOrSent)
-end
-
--- Panggil dari tombol "Refresh Player List"
--- return: array { {text=DisplayName .. "(@"..Name..")", value=UserId}, ... }
-function autosendtradeFeature.RefreshPlayers()
-    local out = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            local label = string.format("%s (@%s)", p.DisplayName or p.Name, p.Name)
-            table.insert(out, { text = label, value = p.UserId })
+local function processInventory()
+    if not inventoryWatcher then return end
+    
+    -- Check if we have target players
+    local hasTargets = false
+    for _ in pairs(selectedPlayers) do
+        hasTargets = true
+        break
+    end
+    if not hasTargets then return end
+    
+    -- Process Fishes
+    local fishes = inventoryWatcher:getSnapshotTyped("Fishes")
+    if fishes and #fishes > 0 then
+        for _, fishEntry in ipairs(fishes) do
+            if shouldTradeItem(fishEntry, "Fishes") then
+                local uuid = fishEntry.UUID or fishEntry.Uuid or fishEntry.uuid
+                if uuid then
+                    local fishId = fishEntry.Id or fishEntry.id
+                    local fishData = fishDataCache[fishId]
+                    local fishName = fishData and fishData.Name or "Unknown Fish"
+                    local tierInfo = fishData and tierDataCache[fishData.Tier]
+                    local tierName = tierInfo and tierInfo.Name or "Unknown Tier"
+                    
+                    -- Check if already in queue
+                    local alreadyQueued = false
+                    for _, queueItem in ipairs(tradeQueue) do
+                        if queueItem.uuid == uuid then
+                            alreadyQueued = true
+                            break
+                        end
+                    end
+                    
+                    if not alreadyQueued then
+                        local targetPlayerId = getRandomTargetPlayerId()
+                        if targetPlayerId then
+                            table.insert(tradeQueue, {
+                                uuid = uuid,
+                                targetPlayerId = targetPlayerId,
+                                itemName = fishName,
+                                tierName = tierName,
+                                category = "Fishes"
+                            })
+                            print("[AutoSendTrade] Queued fish:", fishName, "(" .. tierName .. ")")
+                        end
+                    end
+                end
+            end
         end
     end
-    -- Kamu bisa assign hasil ini ke dropdown kamu (non-multi) untuk target
-    return out
+    
+    -- Process Items (Enchant Stones)
+    local items = inventoryWatcher:getSnapshotTyped("Items")
+    if items and #items > 0 then
+        for _, itemEntry in ipairs(items) do
+            if shouldTradeItem(itemEntry, "Items") then
+                local uuid = itemEntry.UUID or itemEntry.Uuid or itemEntry.uuid
+                if uuid then
+                    local itemId = itemEntry.Id or itemEntry.id
+                    local itemData = itemDataCache[itemId]
+                    local itemName = itemData and itemData.Name or "Unknown Item"
+                    
+                    -- Check if already in queue
+                    local alreadyQueued = false
+                    for _, queueItem in ipairs(tradeQueue) do
+                        if queueItem.uuid == uuid then
+                            alreadyQueued = true
+                            break
+                        end
+                    end
+                    
+                    if not alreadyQueued then
+                        local targetPlayerId = getRandomTargetPlayerId()
+                        if targetPlayerId then
+                            table.insert(tradeQueue, {
+                                uuid = uuid,
+                                targetPlayerId = targetPlayerId,
+                                itemName = itemName,
+                                tierName = nil,
+                                category = "Items"
+                            })
+                            print("[AutoSendTrade] Queued item:", itemName)
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 
--- Opsional, kalau kamu mau trigger rescan manual (misal abis ganti pilihan dropdown)
-function autosendtradeFeature.ForceRescan()
-    collectCandidates()
+local function processTradeQueue()
+    if #tradeQueue == 0 then return end
+    
+    local currentTime = tick()
+    if currentTime - lastTradeTime < TRADE_DELAY then return end
+    
+    local tradeItem = table.remove(tradeQueue, 1)
+    if tradeItem then
+        local success = sendTradeRequest(
+            tradeItem.uuid, 
+            tradeItem.targetPlayerId, 
+            tradeItem.itemName, 
+            tradeItem.tierName
+        )
+        
+        if success then
+            lastTradeTime = currentTime
+        end
+    end
 end
 
-return autosendtradeFeature
+local function mainLoop()
+    if not running then return end
+    
+    processInventory()
+    processTradeQueue()
+end
+
+-- === Lifecycle Methods ===
+
+function AutoSendTrade:Init(guiControls)
+    -- Load tier data
+    if not loadTierData() then
+        return false
+    end
+    
+    -- Scan fish and item data
+    if not scanFishData() then
+        return false
+    end
+    
+    -- Find trade remote
+    if not findTradeRemote() then
+        return false
+    end
+    
+    -- Find text notification remote (optional)
+    findTextNotificationRemote()
+    
+    -- Initialize inventory watcher
+    inventoryWatcher = InventoryWatcher.new()
+    
+    -- Wait for inventory watcher to be ready
+    inventoryWatcher:onReady(function()
+        print("[AutoSendTrade] Inventory watcher ready")
+    end)
+    
+    -- Populate GUI dropdown if provided
+    if guiControls and guiControls.itemDropdown then
+        local options = {}
+        
+        -- Add tier names for fish
+        for tierNum = 1, 7 do
+            if tierDataCache[tierNum] then
+                table.insert(options, tierDataCache[tierNum].Name)
+            end
+        end
+        
+        -- Add known items (Enchant Stone)
+        table.insert(options, "Enchant Stone")
+        
+        -- Reload dropdown
+        pcall(function()
+            guiControls.itemDropdown:Reload(options)
+        end)
+    end
+    
+    return true
+end
+
+function AutoSendTrade:Start(config)
+    if running then return end
+    
+    -- Apply config if provided
+    if config then
+        if config.tierList then
+            self:SetSelectedItems(config.tierList)
+        end
+        if config.playerList then
+            self:SetSelectedPlayers(config.playerList)
+        end
+    end
+    
+    running = true
+    
+    -- Start main loop
+    hbConn = RunService.Heartbeat:Connect(function()
+        local success = pcall(mainLoop)
+        if not success then
+            warn("[AutoSendTrade] Error in main loop")
+        end
+    end)
+    
+    print("[AutoSendTrade] Started")
+end
+
+function AutoSendTrade:Stop()
+    if not running then return end
+    
+    running = false
+    
+    -- Disconnect heartbeat
+    if hbConn then
+        hbConn:Disconnect()
+        hbConn = nil
+    end
+    
+    print("[AutoSendTrade] Stopped")
+end
+
+function AutoSendTrade:Cleanup()
+    self:Stop()
+    
+    -- Clean up inventory watcher
+    if inventoryWatcher then
+        inventoryWatcher:destroy()
+        inventoryWatcher = nil
+    end
+    
+    -- Clear caches and queues
+    table.clear(fishDataCache)
+    table.clear(itemDataCache)
+    table.clear(tierDataCache)
+    table.clear(selectedTiers)
+    table.clear(selectedItems)
+    table.clear(selectedPlayers)
+    table.clear(tradeQueue)
+    
+    tradeRemote = nil
+    textNotificationRemote = nil
+    lastTradeTime = 0
+    
+    print("[AutoSendTrade] Cleaned up")
+end
+
+-- === Setters ===
+
+function AutoSendTrade:SetSelectedItems(itemInput)
+    if not itemInput then return false end
+    
+    -- Clear current selection
+    table.clear(selectedTiers)
+    table.clear(selectedItems)
+    
+    -- Handle both array and set formats
+    if type(itemInput) == "table" then
+        -- If it's an array
+        if #itemInput > 0 then
+            for _, itemName in ipairs(itemInput) do
+                -- Check if it's a tier name
+                for tierNum, tierInfo in pairs(tierDataCache) do
+                    if tierInfo.Name == itemName then
+                        selectedTiers[tierNum] = true
+                        break
+                    end
+                end
+                
+                -- Check if it's an item name
+                if itemName == "Enchant Stone" then
+                    selectedItems[itemName] = true
+                end
+            end
+        else
+            -- If it's a set/dict format
+            for itemName, enabled in pairs(itemInput) do
+                if enabled then
+                    -- Check if it's a tier name
+                    for tierNum, tierInfo in pairs(tierDataCache) do
+                        if tierInfo.Name == itemName then
+                            selectedTiers[tierNum] = true
+                            break
+                        end
+                    end
+                    
+                    -- Check if it's an item name
+                    if itemName == "Enchant Stone" then
+                        selectedItems[itemName] = true
+                    end
+                end
+            end
+        end
+    end
+    
+    print("[AutoSendTrade] Selected tiers:", selectedTiers)
+    print("[AutoSendTrade] Selected items:", selectedItems)
+    return true
+end
+
+function AutoSendTrade:SetSelectedPlayers(playerInput)
+    if not playerInput then return false end
+    
+    -- Clear current selection
+    table.clear(selectedPlayers)
+    
+    -- Handle both array and set formats
+    if type(playerInput) == "table" then
+        -- If it's an array
+        if #playerInput > 0 then
+            for _, playerName in ipairs(playerInput) do
+                if type(playerName) == "string" and playerName ~= "" then
+                    selectedPlayers[playerName] = true
+                end
+            end
+        else
+            -- If it's a set/dict format
+            for playerName, enabled in pairs(playerInput) do
+                if enabled and type(playerName) == "string" and playerName ~= "" then
+                    selectedPlayers[playerName] = true
+                end
+            end
+        end
+    end
+    
+    print("[AutoSendTrade] Selected players:", selectedPlayers)
+    return true
+end
+
+function AutoSendTrade:SetTradeDelay(delay)
+    if type(delay) == "number" and delay >= 0.5 then
+        TRADE_DELAY = delay
+        return true
+    end
+    return false
+end
+
+-- === Utility Methods ===
+
+function AutoSendTrade:GetAvailableItems()
+    local items = {}
+    
+    -- Add tier names
+    for tierNum = 1, 7 do
+        if tierDataCache[tierNum] then
+            table.insert(items, tierDataCache[tierNum].Name)
+        end
+    end
+    
+    -- Add known items
+    table.insert(items, "Enchant Stone")
+    
+    return items
+end
+
+function AutoSendTrade:GetOnlinePlayers()
+    local players = {}
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer then
+            table.insert(players, player.Name)
+        end
+    end
+    
+    return players
+end
+
+function AutoSendTrade:GetSelectedItems()
+    local selected = {}
+    
+    -- Add selected tiers
+    for tierNum, enabled in pairs(selectedTiers) do
+        if enabled and tierDataCache[tierNum] then
+            table.insert(selected, tierDataCache[tierNum].Name)
+        end
+    end
+    
+    -- Add selected items
+    for itemName, enabled in pairs(selectedItems) do
+        if enabled then
+            table.insert(selected, itemName)
+        end
+    end
+    
+    return selected
+end
+
+function AutoSendTrade:GetSelectedPlayers()
+    local selected = {}
+    for playerName, enabled in pairs(selectedPlayers) do
+        if enabled then
+            table.insert(selected, playerName)
+        end
+    end
+    return selected
+end
+
+function AutoSendTrade:GetQueueSize()
+    return #tradeQueue
+end
+
+-- Alias method untuk kompatibilitas GUI
+function AutoSendTrade:SetDesiredItemsByNames(itemInput)
+    return self:SetSelectedItems(itemInput)
+end
+
+return AutoSendTrade
