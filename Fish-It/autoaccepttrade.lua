@@ -1,38 +1,29 @@
---- AutoAcceptTrade.lua - Auto Accept Trade Requests (FIXED)
+--- AutoAcceptTrade.lua - Auto Accept Trade Requests (PURE DIRECT HOOK)
 local AutoAcceptTrade = {}
 AutoAcceptTrade.__index = AutoAcceptTrade
 
 -- Services
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
-
--- Local player
 local LocalPlayer = Players.LocalPlayer
 
 -- State
 local running = false
 local isProcessingTrade = false
 local currentTradeData = nil
-local clickConnection = nil
 local notificationConnection = nil
 
 -- Statistics
 local totalTradesAccepted = 0
 local currentSessionTrades = 0
 
--- Configuration
-local CLICK_INTERVAL = 0.1 -- Click every 100ms
-local MAX_CLICK_ATTEMPTS = 100 -- Maximum clicks per trade (10 seconds)
-
 -- Remotes
 local awaitTradeResponseRemote = nil
 local textNotificationRemote = nil
-local originalAwaitTradeCB = nil  -- simpan callback asli
+local originalAwaitTradeCB = nil
 local newindexHookInstalled = false
 
--- === Helper Functions === (REMOVED CLICKING LOGIC)
+-- === Helper Functions ===
 
 local function findRemotes()
     local success1, remote1 = pcall(function()
@@ -69,13 +60,11 @@ local function findRemotes()
     return true
 end
 
--- NOTE: GUI clicking functions removed - no longer needed with direct hook approach
-
--- FIX 1: Direct hook approach (NO GUI CLICKING) - mengikuti pola Incoming.luau
+-- PURE DIRECT HOOK - No GUI interaction at all
 local function setupTradeResponseListener()
     if not awaitTradeResponseRemote then return false end
 
-    -- Mengikuti pola dari Incoming.luau: HandleInstance untuk RemoteFunction
+    -- Get original callback using pattern from Incoming.luau
     local Success, Callback = pcall(getcallbackvalue, awaitTradeResponseRemote, "OnClientInvoke")
     local IsCallable = (
         typeof(Callback) == "function"
@@ -88,21 +77,20 @@ local function setupTradeResponseListener()
         return false
     end
 
-    -- Simpan callback asli
+    -- Save original callback
     originalAwaitTradeCB = Callback
 
-    -- Hook callback seperti di Incoming.luau - DIRECT RESPONSE, NO GUI INTERACTION
+    -- Hook callback - DIRECT RESPONSE ONLY
     awaitTradeResponseRemote.OnClientInvoke = function(itemData, fromPlayer, timestamp)
         if not running then
-            -- Jika fitur off, kembalikan ke perilaku asli game
+            -- If feature is off, return to original game behavior
             return originalAwaitTradeCB(itemData, fromPlayer, timestamp)
         end
 
-        print("[AutoAcceptTrade] 🔔 Trade request intercepted!")
+        print("[AutoAcceptTrade] Trade request intercepted!")
         print("[AutoAcceptTrade] From:", fromPlayer and fromPlayer.Name or "Unknown")
         print("[AutoAcceptTrade] Item ID:", itemData and itemData.Id or "Unknown")
         print("[AutoAcceptTrade] UUID:", itemData and itemData.UUID or "Unknown")
-        print("[AutoAcceptTrade] Timestamp:", timestamp)
         
         currentTradeData = {
             item = itemData,
@@ -112,30 +100,29 @@ local function setupTradeResponseListener()
         }
         isProcessingTrade = true
 
-        -- LANGSUNG ACCEPT - No GUI interaction needed!
-        print("[AutoAcceptTrade] ✅ Auto-accepting trade (direct response)...")
+        -- DIRECT ACCEPT - Return true immediately
+        print("[AutoAcceptTrade] Auto-accepting trade (direct response)")
         totalTradesAccepted = totalTradesAccepted + 1
         currentSessionTrades = currentSessionTrades + 1
         
-        -- Reset processing state after a delay
+        -- Reset processing state after delay
         task.spawn(function()
-            task.wait(2) -- Give some time for trade to process
+            task.wait(2)
             isProcessingTrade = false
         end)
 
-        -- Return TRUE = Accept trade (server akan proses trade ini)
+        -- Return TRUE = Accept trade (server will process this trade)
         return true
     end
 
-    print("[AutoAcceptTrade] Direct trade response hook installed (no GUI clicking needed)")
+    print("[AutoAcceptTrade] Direct trade response hook installed")
     return true
 end
 
--- FIX 2: Simplified __newindex hook - no GUI clicking
+-- Guard against game overwriting our hook
 local function installNewIndexGuard()
     if newindexHookInstalled then return end
     
-    -- Check if hooking functions are available
     if not hookmetamethod or not newcclosure then
         warn("[AutoAcceptTrade] Hooking functions not available")
         return
@@ -143,7 +130,6 @@ local function installNewIndexGuard()
 
     local originalNewIndex
     originalNewIndex = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
-        -- Mengikuti pola dari Incoming.luau
         if typeof(self) ~= "Instance" or self.ClassName ~= "RemoteFunction" then
             return originalNewIndex(self, key, value)
         end
@@ -156,16 +142,15 @@ local function installNewIndexGuard()
             )
 
             if IsCallable then
-                -- Re-wrap the new callback - DIRECT APPROACH
+                -- Re-wrap the new callback to maintain our auto-accept
                 return originalNewIndex(self, key, function(itemData, fromPlayer, timestamp)
                     if running then
-                        -- LANGSUNG RETURN TRUE - no GUI needed
-                        print("[AutoAcceptTrade] 🔔 Trade intercepted via newindex hook - auto-accepting")
+                        print("[AutoAcceptTrade] Trade intercepted via newindex hook - auto-accepting")
                         totalTradesAccepted = totalTradesAccepted + 1
                         currentSessionTrades = currentSessionTrades + 1
                         return true
                     end
-                    return value(itemData, fromPlayer, timestamp) -- Call original if not running
+                    return value(itemData, fromPlayer, timestamp)
                 end)
             end
         end
@@ -174,7 +159,7 @@ local function installNewIndexGuard()
     end))
 
     newindexHookInstalled = true
-    print("[AutoAcceptTrade] Direct response __newindex guard installed (no GUI clicking)")
+    print("[AutoAcceptTrade] Direct response __newindex guard installed")
 end
 
 local function setupNotificationListener()
@@ -188,27 +173,21 @@ local function setupNotificationListener()
             
             -- Check for trade completion
             if string.find(text, "trade completed") or string.find(text, "trade successful") then
-                print("[AutoAcceptTrade] ✅ Trade completed successfully!")
-                
-                -- Stop processing (no clicking to stop since we don't click)
+                print("[AutoAcceptTrade] Trade completed successfully!")
                 isProcessingTrade = false
                 
-                -- Log trade info
                 if currentTradeData then
                     local duration = tick() - currentTradeData.startTime
                     print(string.format("[AutoAcceptTrade] Trade completed in %.2f seconds", duration))
                 end
                 
-                -- Clear trade data
                 currentTradeData = nil
                 
             elseif string.find(text, "trade cancelled") or 
                    string.find(text, "trade expired") or
                    string.find(text, "trade declined") or
                    string.find(text, "trade failed") then
-                print("[AutoAcceptTrade] ❌ Trade was cancelled/expired/declined")
-                
-                -- Stop processing (no clicking to stop)
+                print("[AutoAcceptTrade] Trade was cancelled/expired/declined")
                 isProcessingTrade = false
                 currentTradeData = nil
             end
@@ -221,7 +200,7 @@ end
 -- === Interface Methods ===
 
 function AutoAcceptTrade:Init(guiControls)
-    print("[AutoAcceptTrade] Initializing...")
+    print("[AutoAcceptTrade] Initializing direct hook version...")
     
     -- Find remotes
     if not findRemotes() then
@@ -229,17 +208,18 @@ function AutoAcceptTrade:Init(guiControls)
         return false
     end
     
-    -- Setup listeners (with error handling)
+    -- Setup listeners
     local success1 = setupTradeResponseListener()
     if not success1 then
         warn("[AutoAcceptTrade] Failed to setup trade response listener")
+        return false
     end
     
     setupNotificationListener()
     installNewIndexGuard()
     
-    print("[AutoAcceptTrade] Initialization complete")
-    return success1
+    print("[AutoAcceptTrade] Direct hook initialization complete")
+    return true
 end
 
 function AutoAcceptTrade:Start(config)
@@ -248,25 +228,12 @@ function AutoAcceptTrade:Start(config)
         return true
     end
     
-    -- Apply config if provided
-    if config then
-        if config.clickInterval then
-            CLICK_INTERVAL = math.max(0.05, config.clickInterval)
-        end
-        if config.maxClickAttempts then
-            MAX_CLICK_ATTEMPTS = math.max(10, config.maxClickAttempts)
-        end
-    end
-    
     running = true
     isProcessingTrade = false
     currentTradeData = nil
     currentSessionTrades = 0
     
-    print("[AutoAcceptTrade] Started - Ready to accept trades")
-    print("  Click interval:", CLICK_INTERVAL, "seconds")
-    print("  Max attempts:", MAX_CLICK_ATTEMPTS)
-    
+    print("[AutoAcceptTrade] Started - Direct hook mode active")
     return true
 end
 
@@ -277,21 +244,18 @@ function AutoAcceptTrade:Stop()
     end
     
     running = false
-    
-    -- Stop processing (no clicking to stop)
     isProcessingTrade = false
     currentTradeData = nil
     
     print("[AutoAcceptTrade] Stopped")
     print("  Session trades accepted:", currentSessionTrades)
-    
     return true
 end
 
 function AutoAcceptTrade:Cleanup()
     self:Stop()
 
-    -- Disconnect connections (no clicking connections to clean)
+    -- Disconnect notification connection
     if notificationConnection then
         notificationConnection:Disconnect()
         notificationConnection = nil
@@ -322,12 +286,11 @@ function AutoAcceptTrade:GetStatus()
         isProcessingTrade = isProcessingTrade,
         totalTradesAccepted = totalTradesAccepted,
         currentSessionTrades = currentSessionTrades,
-        clickInterval = CLICK_INTERVAL,
-        maxClickAttempts = MAX_CLICK_ATTEMPTS,
         hasCurrentTrade = currentTradeData ~= nil,
         currentTradeFrom = currentTradeData and currentTradeData.fromPlayer and currentTradeData.fromPlayer.Name or nil,
         remoteFound = awaitTradeResponseRemote ~= nil,
-        hookInstalled = newindexHookInstalled
+        hookInstalled = newindexHookInstalled,
+        mode = "Direct Hook"
     }
 end
 
@@ -337,26 +300,6 @@ end
 
 function AutoAcceptTrade:IsProcessing()
     return isProcessingTrade
-end
-
--- === Configuration Methods ===
-
-function AutoAcceptTrade:SetClickInterval(interval)
-    if type(interval) == "number" and interval >= 0.05 then
-        CLICK_INTERVAL = interval
-        print("[AutoAcceptTrade] Click interval set to:", interval)
-        return true
-    end
-    return false
-end
-
-function AutoAcceptTrade:SetMaxClickAttempts(attempts)
-    if type(attempts) == "number" and attempts >= 10 then
-        MAX_CLICK_ATTEMPTS = attempts
-        print("[AutoAcceptTrade] Max click attempts set to:", attempts)
-        return true
-    end
-    return false
 end
 
 -- === Debug Methods ===
@@ -381,23 +324,19 @@ end
 
 function AutoAcceptTrade:TestRemoteAccess()
     print("[AutoAcceptTrade] Testing remote access...")
-    print("  awaitTradeResponseRemote:", awaitTradeResponseRemote and "✓ Found" or "❌ Not found")
-    print("  textNotificationRemote:", textNotificationRemote and "✓ Found" or "❌ Not found")
+    print("  awaitTradeResponseRemote:", awaitTradeResponseRemote and "Found" or "Not found")
+    print("  textNotificationRemote:", textNotificationRemote and "Found" or "Not found")
     
     if awaitTradeResponseRemote then
         local success, callback = pcall(getcallbackvalue, awaitTradeResponseRemote, "OnClientInvoke")
-        print("  getcallbackvalue:", success and "✓ Success" or "❌ Failed")
+        print("  getcallbackvalue:", success and "Success" or "Failed")
         if success then
             print("  callback type:", typeof(callback))
+            print("  hook installed:", callback ~= originalAwaitTradeCB and "Yes" or "No")
         end
     end
-end
-
-function AutoAcceptTrade:TestYesButton()
-    -- This function is now deprecated since we use direct hook approach
-    print("[AutoAcceptTrade] ℹ️  TestYesButton is deprecated - using direct hook approach instead")
-    print("[AutoAcceptTrade] ℹ️  No GUI clicking needed with current implementation")
-    return true
+    
+    print("  __newindex guard:", newindexHookInstalled and "Installed" or "Not installed")
 end
 
 -- === Statistics Methods ===
