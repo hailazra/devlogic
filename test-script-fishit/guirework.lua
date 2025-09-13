@@ -1508,7 +1508,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
             -- Load feature jika belum ada
             if not autoAcceptTradeFeature then
                 print("[AutoAcceptTrade] Loading feature...")
-                autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade", {
+                autoAcceptTradeFeature = FeatureManager:GetFeature("AutoAcceptTrade", {
                     toggle = autogiftacc_tgl
                 })
                 
@@ -1603,44 +1603,6 @@ local acceptstatus_btn = autotrade_sec:Button({
                 Content = "Feature not loaded yet",
                 Icon = "info",
                 Duration = 2
-            })
-        end
-    end
-})
-
--- Test button (UPDATED for Button Click Method)
-local testbuttonaccess_btn = autotrade_sec:Button({
-    Title = "Test Button Access",
-    Desc = "Test if trade button can be accessed",
-    Locked = false,
-    Callback = function()
-        if not autoAcceptTradeFeature then
-            autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade")
-            if not autoAcceptTradeFeature then
-                WindUI:Notify({
-                    Title = "Error",
-                    Content = "Could not load AutoAcceptTrade feature",
-                    Icon = "x",
-                    Duration = 3
-                })
-                return
-            end
-        end
-        
-        if autoAcceptTradeFeature.TestButtonAccess then
-            autoAcceptTradeFeature:TestButtonAccess()
-            WindUI:Notify({
-                Title = "Test Complete",
-                Content = "Check console for button test results",
-                Icon = "info", 
-                Duration = 3
-            })
-        else
-            WindUI:Notify({
-                Title = "Test Unavailable",
-                Content = "TestButtonAccess method not found",
-                Icon = "triangle-alert",
-                Duration = 3
             })
         end
     end
