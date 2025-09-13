@@ -93,71 +93,47 @@ end
 local function clickYesButton()
     local yesButton = findYesButton()
     if not yesButton then return false end
-    
-    -- Simulate click using multiple methods for reliability
-    local success = false
-    
-    -- Method 1: MouseButton1Click event
-    pcall(function()
-        yesButton.MouseButton1Click:Fire()
-        success = true
-    end)
-    
-    -- Method 2: GuiService (if available)
-    pcall(function()
-        local GuiService = game:GetService("GuiService")
-        if GuiService and GuiService.SelectedObject ~= yesButton then
-            GuiService.SelectedObject = yesButton
-        end
-    end)
-    
-    -- Method 3: UserInputService simulation (backup)
-    if not success then
+
+    local ok = false
+    if typeof(firesignal) == "function" then
+        pcall(function() firesignal(yesButton.MouseButton1Down) end)
+        pcall(function() firesignal(yesButton.MouseButton1Click) end)
+        pcall(function() firesignal(yesButton.Activated) end)
+        ok = true
+    else
+        local vim = game:GetService("VirtualInputManager")
+        local pos = yesButton.AbsolutePosition + (yesButton.AbsoluteSize / 2)
         pcall(function()
-            local buttonPos = yesButton.AbsolutePosition
-            local buttonSize = yesButton.AbsoluteSize
-            local centerX = buttonPos.X + (buttonSize.X / 2)
-            local centerY = buttonPos.Y + (buttonSize.Y / 2)
-            
-            -- This won't actually work on most executors, but keeping for completeness
-            UserInputService.InputBegan:Fire({
-                UserInputType = Enum.UserInputType.MouseButton1,
-                Position = Vector2.new(centerX, centerY)
-            })
+            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, true,  nil, 0)
+            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, false, nil, 0)
         end)
+        ok = true
     end
-    
-    return success
+    return ok
 end
+
 
 local function startClickingLoop()
     if clickConnection then return end
-    
-    local clickAttempts = 0
-    clickConnection = RunService.Heartbeat:Connect(function()
-        if not running or not isProcessingTrade then
-            return
-        end
-        
-        clickAttempts = clickAttempts + 1
-        
-        -- Safety: Stop if too many attempts
-        if clickAttempts > MAX_CLICK_ATTEMPTS then
+    local t, attempts = 0, 0
+    clickConnection = RunService.Heartbeat:Connect(function(dt)
+        if not running or not isProcessingTrade then return end
+        t += dt
+        if t < CLICK_INTERVAL then return end
+        t = 0
+
+        attempts += 1
+        if attempts > MAX_CLICK_ATTEMPTS then
             print("[AutoAcceptTrade] Max click attempts reached, stopping")
             stopClickingLoop()
             isProcessingTrade = false
             return
         end
-        
-        local success = clickYesButton()
-        if success then
-            print("[AutoAcceptTrade] ✓ Clicked Yes button (attempt", clickAttempts .. ")")
+
+        if clickYesButton() then
+            print(("[AutoAcceptTrade] ✓ Clicked Yes (attempt %d)"):format(attempts))
         end
-        
-        -- Small delay
-        task.wait(CLICK_INTERVAL)
     end)
-    
     print("[AutoAcceptTrade] Started clicking loop")
 end
 
@@ -169,37 +145,51 @@ local function stopClickingLoop()
     end
 end
 
+-- simpan callback asli biar bisa di-restore di Cleanup
+local originalAwaitTradeCB
+
 local function setupTradeResponseListener()
     if not awaitTradeResponseRemote or responseConnection then return end
-    
-    -- Hook OnClientInvoke for AwaitTradeResponse
-    responseConnection = awaitTradeResponseRemote.OnClientInvoke:Connect(function(itemData, fromPlayer, timestamp)
-        if not running then return end
-        
-        print("[AutoAcceptTrade] 🔔 Trade request detected!")
-        print("  From:", fromPlayer and fromPlayer.Name or "Unknown")
-        print("  Item ID:", itemData and itemData.Id or "Unknown")
-        print("  UUID:", itemData and itemData.UUID or "Unknown")
-        
-        -- Store trade data
-        currentTradeData = {
-            item = itemData,
-            fromPlayer = fromPlayer,
-            timestamp = timestamp,
-            startTime = tick()
-        }
-        
-        -- Start processing this trade
-        isProcessingTrade = true
-        
-        -- Start clicking Yes button
-        task.spawn(function()
-            task.wait(0.5) -- Small delay before starting clicks
-            startClickingLoop()
-        end)
-    end)
-    
-    print("[AutoAcceptTrade] Trade response listener setup complete")
+
+    -- coba ambil callback asli seperti Incoming.txt
+    local ok, cb = pcall(getcallbackvalue, awaitTradeResponseRemote, "OnClientInvoke")
+    if ok and cb then
+        originalAwaitTradeCB = cb
+        awaitTradeResponseRemote.OnClientInvoke = function(itemData, fromPlayer, timestamp, ...)
+            if not running then
+                return originalAwaitTradeCB(itemData, fromPlayer, timestamp, ...)
+            end
+
+            print("[AutoAcceptTrade] 🔔 Trade request detected!")
+            currentTradeData = {
+                item = itemData, fromPlayer = fromPlayer,
+                timestamp = timestamp, startTime = tick()
+            }
+            isProcessingTrade = true
+
+            -- MODE A (disarankan): terima tanpa GUI
+            return true
+
+            -- MODE B (kalau mau tetap buka prompt):
+            -- task.defer(function() startClickingLoop() end)
+            -- return originalAwaitTradeCB(itemData, fromPlayer, timestamp, ...)
+        end
+        responseConnection = "HOOKED"
+        print("[AutoAcceptTrade] Hooked AwaitTradeResponse.OnClientInvoke (wrapped)")
+    else
+        -- fallback: override langsung (bypass UI)
+        awaitTradeResponseRemote.OnClientInvoke = function(itemData, fromPlayer, timestamp, ...)
+            if not running then return end
+            currentTradeData = {
+                item = itemData, fromPlayer = fromPlayer,
+                timestamp = timestamp, startTime = tick()
+            }
+            isProcessingTrade = true
+            return true
+        end
+        responseConnection = "HOOKED"
+        warn("[AutoAcceptTrade] getcallbackvalue failed; overriding OnClientInvoke directly")
+    end
 end
 
 local function setupNotificationListener()
@@ -314,6 +304,19 @@ end
 
 function AutoAcceptTrade:Cleanup()
     self:Stop()
+    -- ... putus semua connection ...
+
+    if awaitTradeResponseRemote then
+        if originalAwaitTradeCB then
+            awaitTradeResponseRemote.OnClientInvoke = originalAwaitTradeCB
+            originalAwaitTradeCB = nil
+        else
+            -- kalau kamu memang override total, baru nil-kan
+            awaitTradeResponseRemote.OnClientInvoke = nil
+        end
+    end
+end
+
     
     -- Disconnect all connections
     if responseConnection and type(responseConnection) == "RBXScriptConnection" then
