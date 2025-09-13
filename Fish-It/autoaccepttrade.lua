@@ -26,7 +26,7 @@ local CONFIG = {
     PromptName      = "Prompt",  -- ScreenGui di PlayerGui
     ClicksPerSecond = 18,        -- 6..40 aman. Naikkan kalau perlu.
     MaxSpamSeconds  = 6,         -- safety stop biar nggak nyangkut
-    EdgePaddingFrac = 0.18,      -- klik agak ke tengah (hindari pinggir rect)
+    EdgePaddingFrac = 0,      -- klik agak ke tengah (hindari pinggir rect)
     UseVIM          = true,      -- VirtualInputManager click
     AlsoMoveMouse   = true,      -- kirim mouse move sebelum click (lebih natural)
 
