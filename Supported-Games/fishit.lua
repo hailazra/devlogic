@@ -60,7 +60,8 @@ local FEATURE_URLS = {
     AutoEnchantRod     = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoenchantrodv1.lua",
     AutoFavoriteFish   = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autofavoritefish.lua",
     AutoTeleportPlayer = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autoteleportplayer.lua",
-    BoostFPS           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/boostfps.lua"
+    BoostFPS           = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/boostfps.lua",
+    AutoSendTrade      = "https://raw.githubusercontent.com/hailazra/devlogic/refs/heads/main/Fish-It/autosendtrade.lua"
 }
 
 function FeatureManager:LoadFeature(featureName, controls)
@@ -118,6 +119,7 @@ local function preloadAllFeatures()
         "AutoTeleportEvent",
         "AutoEnchantRod",
         "AutoFavoriteFish",
+        "AutoSendTrade",
         "FishWebhook",       -- Notification features
         "AutoBuyWeather",    -- Shop features
         "AutoBuyBait",
@@ -1072,40 +1074,189 @@ local enchant_tgl = autoenchantrod_sec:Toggle({
 
 
 --- Auto Gift
-local autogift_sec = TabAutomation:Section({ 
+local autotrade_sec = TabAutomation:Section({ 
     Title = "Auto Gift",
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
 
-local autogiftplayer_dd = autogift_sec:Dropdown({
+-- helpers for player lists
+local function listPlayers(excludeSelf)
+    local me = LocalPlayer and LocalPlayer.Name
+    local t = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if not excludeSelf or (me and p.Name ~= me) then
+            table.insert(t, p.Name)
+        end
+    end
+    table.sort(t, function(a, b) return a:lower() < b:lower() end)
+    return t
+end
+
+-- normalize apapun yang dikasih Dropdown (string atau table)
+local function normalizeOption(opt)
+    if type(opt) == "string" then return opt end
+    if type(opt) == "table" then
+        return opt.Value or opt.value or opt[1] or opt.Selected or opt.selection
+    end
+    return nil
+end
+
+local autosendtradeFeature = nil
+local trade_currentPlayerName = nil
+local trade_selectedRarities  = {}  -- array of string
+local trade_selectedStones    = {} 
+
+local DEFAULT_RARITIES = { "Common","Uncommon","Rare","Epic","Legendary","Mythic","Secret" }
+local DEFAULT_STONES   = { "Enchant Stone" }
+
+local autosendtrade_dd = autotrade_sec:Dropdown({
     Title = "Select Player",
-    Values = { "Category A", "Category B", "Category C" },
-    Value = "Category A",
+    Values = listPlayers(true),
+    Value = "",
     Callback = function(option) 
-        print("Category selected: " .. option) 
+        local name = normalizeOption(option)
+       trade_currentPlayerName = name
+        if autosendtradeFeature and autosendtradeFeature.SetTarget then
+            autosendtradeFeature.SetTarget(name)
+        end
+        print("[autosendtrade][GUI] target:", name, typeof(option))
     end
 })
 
-local autogift_tgl = autogift_sec:Toggle({
-    Title = "Auto Gift Fish",
+local autotrade_rarity_ddm = autotrade_sec:Dropdown({
+    Title     = "Select Rarity",
+    Desc      = "Pick rarities to auto-trade",
+    Values    = DEFAULT_RARITIES,
+    Value     = {},
+    Multi     = true,
+    AllowNone = true,
+    Callback  = function(options)
+        trade_selectedRarities = options or {}
+        if autosendtradeFeature and autosendtradeFeature.SetSelectedRarities then
+            autosendtradeFeature.SetSelectedRarities(trade_selectedRarities)
+            if autosendtradeFeature.ForceRescan then autosendtradeFeature.ForceRescan() end
+        end
+        -- print("[autosendtrade][GUI] rarities:", HttpService:JSONEncode(trade_selectedRarities))
+    end
+})
+
+local autotrade_stone_ddm = autotrade_sec:Dropdown({
+    Title     = "Enchant Stone",
+    Desc      = "Pick stone names from Items",
+    Values    = DEFAULT_STONES,
+    Value     = {},
+    Multi     = true,
+    AllowNone = true,
+    Callback  = function(options)
+        trade_selectedStones = options or {}
+        if autosendtradeFeature and autosendtradeFeature.SetSelectedStones then
+            autosendtradeFeature.SetSelectedStones(trade_selectedStones)
+            if autosendtradeFeature.ForceRescan then autosendtradeFeature.ForceRescan() end
+        end
+        -- print("[autosendtrade][GUI] stones:", HttpService:JSONEncode(trade_selectedStones))
+    end
+})
+
+local autotsendtrade_tgl = autotrade_sec:Toggle({
+    Title = "Auto Trade",
     Desc  = "",
     Default = false,
     Callback = function(state) 
-        print("Toggle Activated" .. tostring(state))
+        if state then
+            -- Lazy-load modul saat ON
+            if not autosendtradeFeature then
+                autosendtradeFeature = FeatureManager:GetFeature("AutoSendTrade", {
+                    playerDropdown   = autosendtrade_dd,
+                    rarityDropdown   = autotrade_rarity_ddm,
+                    stoneDropdown    = autotrade_stone_ddm,
+                    toggle           = autotsendtrade_tgl,
+                    refreshButton    = autotraderefresh_btn,
+                })
+                -- Setelah modul ada, coba reload daftar REAL dari game (opsional)
+                if autosendtradeFeature then
+                    task.spawn(function()
+                        task.wait(0.5)
+                        -- rarities
+                        if autosendtradeFeature.GetRarityNames and autotrade_rarity_ddm.Reload then
+                            local names = autosendtradeFeature:GetRarityNames()
+                            if type(names) == "table" and #names > 0 then
+                                autotrade_rarity_ddm:Reload(names)
+                            end
+                        end
+                        -- stones
+                        if autosendtradeFeature.GetStoneNames and autotrade_stone_ddm.Reload then
+                            local stones = autosendtradeFeature:GetStoneNames()
+                            if type(stones) == "table" and #stones > 0 then
+                                autotrade_stone_ddm:Reload(stones)
+                            end
+                        end
+                    end)
+                end
+            end
+
+            -- Validasi target player
+            if (not trade_currentPlayerName or trade_currentPlayerName == "") then
+                WindUI:Notify({ Title="Select Target", Content="Pilih player dulu", Icon="info", Duration=2 })
+                autotsendtrade_tgl:Set(false)
+                return
+            end
+            if autosendtradeFeature and autosendtradeFeature.SetTarget then
+                autosendtradeFeature.SetTarget(trade_currentPlayerName)
+            end
+
+            -- Pasang filter awal (kalau user sudah memilih sebelumnya)
+            if autosendtradeFeature then
+                if autosendtradeFeature.SetSelectedRarities then
+                    autosendtradeFeature.SetSelectedRarities(trade_selectedRarities)
+                end
+                if autosendtradeFeature.SetSelectedStones then
+                    autosendtradeFeature.SetSelectedStones(trade_selectedStones)
+                end
+                if autosendtradeFeature.ForceRescan then
+                    autosendtradeFeature.ForceRescan()
+                end
+            end
+
+            -- ON
+            if autosendtradeFeature and autosendtradeFeature.SetActive then
+                autosendtradeFeature.SetActive(true)
+                WindUI:Notify({ Title="Auto Trade", Content="Started", Icon="check", Duration=2 })
+            else
+                autotsendtrade_tgl:Set(false)
+                WindUI:Notify({ Title="Failed", Content="AutoSendTrade not available", Icon="x", Duration=3 })
+            end
+        else
+            -- OFF
+            if autosendtradeFeature and autosendtradeFeature.SetActive then
+                autosendtradeFeature.SetActive(false)
+            end
+        end
     end
 })
 
-local autogiftrefresh_btn = autogift_sec:Button({
+local autotraderefresh_btn = autotrade_sec:Button({
     Title = "Refresh Player List",
     Desc = "",
     Locked = false,
     Callback = function()
-        print("clicked")
+        local names = listPlayers(true)
+        autosendtrade_dd:Refresh(names)
+        -- jaga state: kalau pilihan lama hilang, auto pick pertama (opsional)
+        if not table.find(names, trade_currentPlayerName) then
+            trade_currentPlayerName = names[1]
+            if trade_currentPlayerName then
+                autosendtrade_dd:Select(trade_currentPlayerName)
+                if autosendtradeFeature and autosendtradeFeature.SetTarget then
+                    autosendtradeFeature.SetTarget(trade_currentPlayerName)
+                end
+            end
+        end
+        WindUI:Notify({ Title="Players", Content=("Online: %d"):format(#names), Icon="users", Duration=2 })
     end
 })
 
-local autogiftacc_tgl = autogift_sec:Toggle({
+local autogiftacc_tgl = autotrade_sec:Toggle({
     Title = "Auto Accept Gift",
     Desc  = "",
     Default = false,
@@ -1640,28 +1791,6 @@ local teleplayer_sec = TabTeleport:Section({
     TextXAlignment = "Left",
     TextSize = 17, -- Default Size
 })
-
--- helpers
-local function listPlayers(excludeSelf)
-    local me = LocalPlayer and LocalPlayer.Name
-    local t = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if not excludeSelf or (me and p.Name ~= me) then
-            table.insert(t, p.Name)
-        end
-    end
-    table.sort(t, function(a, b) return a:lower() < b:lower() end)
-    return t
-end
-
--- normalize apapun yang dikasih Dropdown (string atau table)
-local function normalizeOption(opt)
-    if type(opt) == "string" then return opt end
-    if type(opt) == "table" then
-        return opt.Value or opt.value or opt[1] or opt.Selected or opt.selection
-    end
-    return nil
-end
 
 local teleplayerFeature = nil
 local currentPlayerName = nil
