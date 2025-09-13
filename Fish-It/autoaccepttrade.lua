@@ -27,7 +27,7 @@ local CONFIG = {
 
     -- (Opsional) Paksa klik titik tetap bila ABS pos tombol suka nyeleneh
     ForceCoords      = Vector2.new(277, 137),
-    ForceEveryClick  = false,      -- true = selalu pakai ForceCoords
+    ForceEveryClick  = true,      -- true = selalu pakai ForceCoords
 
     StopOnTextMatches = { "trade complete", "trade completed", "trade successful" },
     StopOnFailMatches = { "trade cancelled", "trade canceled", "trade declined", "trade expired", "trade failed" },
