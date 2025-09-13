@@ -1300,6 +1300,7 @@ local autotrade_sec = TabAutomation:Section({
 local autoTradeFeature = nil
 local selectedTradeItems = {}
 local selectedTargetPlayers = {}
+local autoAcceptTradeFeature = nil
 
 -- Dropdown untuk pilih target players (Multi - bisa kirim ke beberapa player)
 local tradeplayer_ddm = autotrade_sec:Dropdown({
@@ -1489,21 +1490,81 @@ local autotrade_tgl = autotrade_sec:Toggle({
     end
 })
 
--- Auto Accept Gift toggle (placeholder - implement jika diperlukan)
+-- Toggle untuk Auto Accept Trade
 local autogiftacc_tgl = autotrade_sec:Toggle({
-    Title = "Auto Accept Gift",
+    Title = "Auto Accept Trade",
     Desc = "Automatically accept incoming trade requests",
     Default = false,
     Callback = function(state) 
-        -- TODO: Implement auto accept gift functionality
-        WindUI:Notify({
-            Title = "Info",
-            Content = "Auto Accept Gift coming soon",
-            Icon = "info",
-            Duration = 2
-        })
         if state then
-            autogiftacc_tgl:Set(false) -- Reset untuk sementara
+            -- Load feature jika belum ada
+            if not autoAcceptTradeFeature then
+                print("[AutoAcceptTrade] Loading feature...")
+                autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade", {
+                    intervalInput = acceptinterval_in,
+                    toggle = autogiftacc_tgl
+                })
+                
+                if not autoAcceptTradeFeature then
+                    WindUI:Notify({
+                        Title = "Failed",
+                        Content = "Could not load AutoAcceptTrade feature",
+                        Icon = "x",
+                        Duration = 3
+                    })
+                    autogiftacc_tgl:Set(false)
+                    return
+                end
+            end
+            
+            -- Get click interval
+            local clickInterval = tonumber(acceptinterval_in.Value) or 0.1
+            if clickInterval < 0.05 then clickInterval = 0.05 end
+            
+            -- Start auto accept
+            if autoAcceptTradeFeature and autoAcceptTradeFeature.Start then
+                local success = autoAcceptTradeFeature:Start({
+                    clickInterval = clickInterval,
+                    maxClickAttempts = 100 -- 10 seconds max per trade
+                })
+                
+                if success ~= false then
+                    WindUI:Notify({
+                        Title = "Started",
+                        Content = "Auto Accept Trade is now active",
+                        Icon = "check",
+                        Duration = 2
+                    })
+                    print("[AutoAcceptTrade] Successfully started with interval:", clickInterval)
+                else
+                    autogiftacc_tgl:Set(false)
+                    WindUI:Notify({
+                        Title = "Failed", 
+                        Content = "Could not start Auto Accept Trade",
+                        Icon = "x",
+                        Duration = 3
+                    })
+                end
+            else
+                autogiftacc_tgl:Set(false)
+                WindUI:Notify({
+                    Title = "Error",
+                    Content = "Start method not available",
+                    Icon = "x", 
+                    Duration = 3
+                })
+            end
+        else
+            -- Stop auto accept
+            if autoAcceptTradeFeature and autoAcceptTradeFeature.Stop then
+                autoAcceptTradeFeature:Stop()
+                WindUI:Notify({
+                    Title = "Stopped",
+                    Content = "Auto Accept Trade stopped", 
+                    Icon = "info",
+                    Duration = 2
+                })
+            end
         end
     end
 })
