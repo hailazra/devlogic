@@ -1102,157 +1102,71 @@ local function normalizeOption(opt)
     return nil
 end
 
-local autosendtradeFeature = nil
-local trade_currentPlayerName = nil
-local trade_selectedRarities  = {}  -- array of string
-local trade_selectedStones    = {} 
+local autoTradeFeature = nil
+local selectedTradeItems = {}
+local selectedTradePlayers = {}
 
-local DEFAULT_RARITIES = { "Common","Uncommon","Rare","Epic","Legendary","Mythic","Secret" }
-local DEFAULT_STONES   = { "Enchant Stone" }
-
-local autosendtrade_dd = autotrade_sec:Dropdown({
-    Title = "Select Player",
-    Values = listPlayers(true),
-    Value = "",
-    Callback = function(option) 
-        local name = normalizeOption(option)
-       trade_currentPlayerName = name
-        if autosendtradeFeature and autosendtradeFeature.SetTarget then
-            autosendtradeFeature.SetTarget(name)
-        end
-        print("[autosendtrade][GUI] target:", name, typeof(option))
-    end
-})
-
-local autotrade_rarity_ddm = autotrade_sec:Dropdown({
-    Title     = "Select Rarity",
-    Desc      = "Pick rarities to auto-trade",
-    Values    = DEFAULT_RARITIES,
-    Value     = {},
-    Multi     = true,
+local tradeplayer_ddm = autotrade_sec:Dropdown({
+    Title = "Select Target Players", 
+    Values = {},
+    Multi = true,
     AllowNone = true,
-    Callback  = function(options)
-        trade_selectedRarities = options or {}
-        if autosendtradeFeature and autosendtradeFeature.SetSelectedRarities then
-            autosendtradeFeature.SetSelectedRarities(trade_selectedRarities)
-            if autosendtradeFeature.ForceRescan then autosendtradeFeature.ForceRescan() end
+    Callback = function(selectedPlayers)
+        selectedTradePlayers = selectedPlayers
+        if autoTradeFeature then
+            autoTradeFeature:SetSelectedPlayers(selectedPlayers)
         end
-        -- print("[autosendtrade][GUI] rarities:", HttpService:JSONEncode(trade_selectedRarities))
     end
 })
 
-local autotrade_stone_ddm = autotrade_sec:Dropdown({
-    Title     = "Enchant Stone",
-    Desc      = "Pick stone names from Items",
-    Values    = DEFAULT_STONES,
-    Value     = {},
-    Multi     = true,
+local tradeitem_ddm = autotrade_sec:Dropdown({
+    Title = "Select Items & Fish Tiers",
+    Values = {}, -- akan di-populate otomatis
+    Multi = true,
     AllowNone = true,
-    Callback  = function(options)
-        trade_selectedStones = options or {}
-        if autosendtradeFeature and autosendtradeFeature.SetSelectedStones then
-            autosendtradeFeature.SetSelectedStones(trade_selectedStones)
-            if autosendtradeFeature.ForceRescan then autosendtradeFeature.ForceRescan() end
+    Callback = function(selectedItems)
+        selectedTradeItems = selectedItems
+        if autoTradeFeature then
+            autoTradeFeature:SetSelectedItems(selectedItems)
         end
-        -- print("[autosendtrade][GUI] stones:", HttpService:JSONEncode(trade_selectedStones))
     end
 })
 
-local autotsendtrade_tgl = autotrade_sec:Toggle({
-    Title = "Auto Trade",
-    Desc  = "",
+local refreshplayers_btn = autotrade_sec:Button({
+    Title = "Refresh Players",
+    Callback = function()
+        if autoTradeFeature then
+            local onlinePlayers = autoTradeFeature:GetOnlinePlayers()
+            tradeplayer_ddm:Refresh(onlinePlayers)
+        end
+    end
+})
+
+local autotrade_tgl = autotrade_sec:Toggle({
+    Title = "Auto Send Trade",
     Default = false,
-    Callback = function(state) 
+    Callback = function(state)
         if state then
-            -- Lazy-load modul saat ON
-            if not autosendtradeFeature then
-                autosendtradeFeature = FeatureManager:GetFeature("AutoSendTrade", {
-                    playerDropdown   = autosendtrade_dd,
-                    rarityDropdown   = autotrade_rarity_ddm,
-                    stoneDropdown    = autotrade_stone_ddm,
-                    toggle           = autotsendtrade_tgl,
-                    refreshButton    = autotraderefresh_btn,
+            if not autoTradeFeature then
+                autoTradeFeature = FeatureManager:GetFeature("AutoSendTrade", {
+                    itemDropdown = tradeitem_ddm,
+                    playerDropdown = tradeplayer_ddm,
+                    refreshButton = refreshplayers_btn
                 })
-                -- Setelah modul ada, coba reload daftar REAL dari game (opsional)
-                if autosendtradeFeature then
-                    task.spawn(function()
-                        task.wait(0.5)
-                        -- rarities
-                        if autosendtradeFeature.GetRarityNames and autotrade_rarity_ddm.Reload then
-                            local names = autosendtradeFeature:GetRarityNames()
-                            if type(names) == "table" and #names > 0 then
-                                autotrade_rarity_ddm:Reload(names)
-                            end
-                        end
-                        -- stones
-                        if autosendtradeFeature.GetStoneNames and autotrade_stone_ddm.Reload then
-                            local stones = autosendtradeFeature:GetStoneNames()
-                            if type(stones) == "table" and #stones > 0 then
-                                autotrade_stone_ddm:Reload(stones)
-                            end
-                        end
-                    end)
-                end
             end
-
-            -- Validasi target player
-            if (not trade_currentPlayerName or trade_currentPlayerName == "") then
-                WindUI:Notify({ Title="Select Target", Content="Pilih player dulu", Icon="info", Duration=2 })
-                autotsendtrade_tgl:Set(false)
-                return
-            end
-            if autosendtradeFeature and autosendtradeFeature.SetTarget then
-                autosendtradeFeature.SetTarget(trade_currentPlayerName)
-            end
-
-            -- Pasang filter awal (kalau user sudah memilih sebelumnya)
-            if autosendtradeFeature then
-                if autosendtradeFeature.SetSelectedRarities then
-                    autosendtradeFeature.SetSelectedRarities(trade_selectedRarities)
-                end
-                if autosendtradeFeature.SetSelectedStones then
-                    autosendtradeFeature.SetSelectedStones(trade_selectedStones)
-                end
-                if autosendtradeFeature.ForceRescan then
-                    autosendtradeFeature.ForceRescan()
-                end
-            end
-
-            -- ON
-            if autosendtradeFeature and autosendtradeFeature.SetActive then
-                autosendtradeFeature.SetActive(true)
-                WindUI:Notify({ Title="Auto Trade", Content="Started", Icon="check", Duration=2 })
+            if autoTradeFeature then
+                autoTradeFeature:Start({
+                    tierList = selectedTradeItems,
+                    playerList = selectedTradePlayers
+                })
             else
-                autotsendtrade_tgl:Set(false)
-                WindUI:Notify({ Title="Failed", Content="AutoSendTrade not available", Icon="x", Duration=3 })
+                autotrade_tgl:Set(false)
             end
         else
-            -- OFF
-            if autosendtradeFeature and autosendtradeFeature.SetActive then
-                autosendtradeFeature.SetActive(false)
+            if autoTradeFeature then
+                autoTradeFeature:Stop()
             end
         end
-    end
-})
-
-local autotraderefresh_btn = autotrade_sec:Button({
-    Title = "Refresh Player List",
-    Desc = "",
-    Locked = false,
-    Callback = function()
-        local names = listPlayers(true)
-        autosendtrade_dd:Refresh(names)
-        -- jaga state: kalau pilihan lama hilang, auto pick pertama (opsional)
-        if not table.find(names, trade_currentPlayerName) then
-            trade_currentPlayerName = names[1]
-            if trade_currentPlayerName then
-                autosendtrade_dd:Select(trade_currentPlayerName)
-                if autosendtradeFeature and autosendtradeFeature.SetTarget then
-                    autosendtradeFeature.SetTarget(trade_currentPlayerName)
-                end
-            end
-        end
-        WindUI:Notify({ Title="Players", Content=("Online: %d"):format(#names), Icon="users", Duration=2 })
     end
 })
 
