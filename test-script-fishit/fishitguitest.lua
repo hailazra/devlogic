@@ -11,12 +11,73 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
-local EnchantFolder = ReplicatedStorage.Enchants
-local BaitFolder = ReplicatedStorage.Baits
-local RodFolder = ReplicatedStorage.Items
-local WeatherFolder = ReplicatedStorage.Events
-local EventFolder = ReplicatedStorage.Events
-local BoatFolder = ReplicatedStorage.Boats
+local EnchantModule = ReplicatedStorage.Enchants
+local BaitModule = ReplicatedStorage.Baits
+local ItemsModule = ReplicatedStorage.Items
+local WeatherModule = ReplicatedStorage.Events
+local BoatModule = ReplicatedStorage.Boats
+
+-- === DROPDOWN HELPERS FOR GAME SOURCE === --
+-- Enchant List
+local function getEnchantName()
+    local enchantName = {}
+    for _, enchant in pairs(EnchantModule:GetChildren()) do
+        if enchant:IsA("ModuleScript") then
+            table.insert(enchantName, enchant.Name)
+        end
+    end
+    return enchantName
+end
+
+-- Bait List
+local function getBaitNames()
+    local baitName = {}
+    
+    for _, item in pairs(BaitModule:GetChildren()) do
+        if item:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(item)
+            end)
+            
+            if success and moduleData then
+                if moduleData.Data and moduleData.Data.Type == "Baits" then
+                    if moduleData.Price then
+                        table.insert(baitName, item.Name)
+                    end
+                end
+            end
+        end
+    end
+    
+    return baitName
+end
+
+-- Rod List
+local function getFishingRodNames()
+    local rodNames = {}
+    for _, item in pairs(ItemsModule:GetChildren()) do
+        if item:IsA("ModuleScript") then
+            local success, moduleData = pcall(function()
+                return require(item)
+            end)
+            
+            if success and moduleData then
+                if moduleData.Data and moduleData.Data.Type == "Fishing Rods" then
+                    if moduleData.Price then
+                         if moduleData.Data.Name then
+                        table.insert(rodNames, moduleData.Data.Name)
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Sort A-Z
+    table.sort(rodNames)
+    return rodNames
+end
+
+local listRod = getFishingRodNames()
 
 -- Make global for features to access
 _G.GameServices = {
@@ -819,7 +880,8 @@ local favfish_sec = TabBackpack:Section({
 
 local autoFavFishFeature = nil
 local selectedTiers = {}
-
+
+
 local favfish_ddm = favfish_sec:Dropdown({
     Title     = "Select Rarity",
     Values    = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common" }, -- default fallback
@@ -982,15 +1044,6 @@ local enchant_sec = TabAutomation:Section({
     Opened = true
 })
 
-local function getEnchantName()
-    local enchantName = {}
-    for _, enchant in pairs(EnchantFolder:GetChildren()) do
-        if enchant:IsA("ModuleScript") then
-            table.insert(enchantName, enchant.Name)
-        end
-    end
-    return enchantName
-end
 
 local autoEnchantFeature = nil
 local selectedEnchants   = {}
@@ -1129,20 +1182,7 @@ local selectedRodsSet = {} -- State untuk menyimpan pilihan user
 
 local shoprod_ddm = shoprod_sec:Dropdown({
     Title = "Select Rod",
-    Values = {
-        "Luck Rod",
-        "Carbon Rod", 
-        "Grass Rod",
-        "Demascus Rod",
-        "Ice Rod",
-        "Lucky Rod",
-        "Midnight Rod",
-        "Steampunk Rod",
-        "Chrome Rod",
-        "Astral Rod",
-        "Ares Rod",
-        "Angler Rod"
-    },
+    Values = listRod,
     Value = {}, -- Start with empty selection
     Multi = true,
     AllowNone = true,
@@ -1169,7 +1209,7 @@ local shoprod_btn = shoprod_sec:Button({
         -- Load feature pada first-time saja
         if not autobuyrodFeature then
             print("[GUI] Loading AutoBuyRod feature...")
-            autobuyrodFeature = FeatureManager:LoadFeature("AutoBuyRod", {
+            autobuyrodFeature = FeatureManager:GetFeature("AutoBuyRod", {
                 rodsDropdown = shoprod_ddm,
                 button = shoprod_btn
             })
@@ -1291,28 +1331,6 @@ local shopbait_sec = TabShop:Section({
     TextSize = 17, -- Default Size
     Opened = true
 })
-
-local function getBaitNames()
-    local baitName = {}
-    
-    for _, item in pairs(BaitFolder:GetChildren()) do
-        if item:IsA("ModuleScript") then
-            local success, moduleData = pcall(function()
-                return require(item)
-            end)
-            
-            if success and moduleData then
-                if moduleData.Data and moduleData.Data.Type == "Baits" then
-                    if moduleData.Price then
-                        table.insert(baitName, item.Name)
-                    end
-                end
-            end
-        end
-    end
-    
-    return baitName
-end
 
 local autobuybaitFeature = nil
 local selectedBaitsSet = {}
@@ -1674,7 +1692,10 @@ local teleplayerrefresh_btn = teleplayer_sec:Button({
     end
 })
 
---- === Misc === ---
+--- === Misc === ---
+
+
+
 --- Webhook
 local webhookfish_sec = TabMisc:Section({ 
     Title = "Webhook",
