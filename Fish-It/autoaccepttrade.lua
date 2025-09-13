@@ -32,7 +32,7 @@ local textNotificationRemote = nil
 local originalAwaitTradeCB = nil  -- simpan callback asli
 local newindexHookInstalled = false
 
--- === Helper Functions ===
+-- === Helper Functions === (REMOVED CLICKING LOGIC)
 
 local function findRemotes()
     local success1, remote1 = pcall(function()
@@ -69,92 +69,9 @@ local function findRemotes()
     return true
 end
 
-local function findYesButton()
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return nil end
-    
-    local prompt = playerGui:FindFirstChild("Prompt")
-    if not prompt then return nil end
-    
-    local blackout = prompt:FindFirstChild("Blackout")
-    if not blackout then return nil end
-    
-    local options = blackout:FindFirstChild("Options")
-    if not options then return nil end
-    
-    local yesButton = options:FindFirstChild("Yes")
-    if not yesButton or not yesButton:IsA("ImageButton") then return nil end
-    
-    -- Check if button is visible and clickable
-    if not yesButton.Visible or yesButton.Parent.Visible == false then return nil end
-    
-    return yesButton
-end
+-- NOTE: GUI clicking functions removed - no longer needed with direct hook approach
 
-local function clickYesButton()
-    local yesButton = findYesButton()
-    if not yesButton then return false end
-    
-    -- Simulate click using multiple methods for reliability
-    local success = false
-    
-    -- Method 1: MouseButton1Click event
-    pcall(function()
-        yesButton.MouseButton1Click:Fire()
-        success = true
-    end)
-    
-    -- Method 2: GuiService (if available)
-    pcall(function()
-        local GuiService = game:GetService("GuiService")
-        if GuiService and GuiService.SelectedObject ~= yesButton then
-            GuiService.SelectedObject = yesButton
-        end
-    end)
-    
-    return success
-end
-
-local function startClickingLoop()
-    if clickConnection then return end
-    
-    local clickAttempts = 0
-    clickConnection = RunService.Heartbeat:Connect(function()
-        if not running or not isProcessingTrade then
-            return
-        end
-        
-        clickAttempts = clickAttempts + 1
-        
-        -- Safety: Stop if too many attempts
-        if clickAttempts > MAX_CLICK_ATTEMPTS then
-            print("[AutoAcceptTrade] Max click attempts reached, stopping")
-            stopClickingLoop()
-            isProcessingTrade = false
-            return
-        end
-        
-        local success = clickYesButton()
-        if success then
-            print("[AutoAcceptTrade] ✓ Clicked Yes button (attempt", clickAttempts .. ")")
-        end
-        
-        -- Small delay
-        task.wait(CLICK_INTERVAL)
-    end)
-    
-    print("[AutoAcceptTrade] Started clicking loop")
-end
-
-local function stopClickingLoop()
-    if clickConnection then
-        clickConnection:Disconnect()
-        clickConnection = nil
-        print("[AutoAcceptTrade] Stopped clicking loop")
-    end
-end
-
--- FIX 1: Proper setup mengikuti pola Incoming.luau
+-- FIX 1: Direct hook approach (NO GUI CLICKING) - mengikuti pola Incoming.luau
 local function setupTradeResponseListener()
     if not awaitTradeResponseRemote then return false end
 
@@ -174,21 +91,18 @@ local function setupTradeResponseListener()
     -- Simpan callback asli
     originalAwaitTradeCB = Callback
 
-    -- Hook callback seperti di Incoming.luau
-    awaitTradeResponseRemote.OnClientInvoke = function(...)
+    -- Hook callback seperti di Incoming.luau - DIRECT RESPONSE, NO GUI INTERACTION
+    awaitTradeResponseRemote.OnClientInvoke = function(itemData, fromPlayer, timestamp)
         if not running then
             -- Jika fitur off, kembalikan ke perilaku asli game
-            return originalAwaitTradeCB(...)
+            return originalAwaitTradeCB(itemData, fromPlayer, timestamp)
         end
 
-        local args = {...}
-        print("[AutoAcceptTrade] 🔔 Trade request detected!")
-        print("[AutoAcceptTrade] Args received:", #args)
-        
-        -- Parse arguments (adjust based on your game's structure)
-        local itemData = args[1]
-        local fromPlayer = args[2] 
-        local timestamp = args[3]
+        print("[AutoAcceptTrade] 🔔 Trade request intercepted!")
+        print("[AutoAcceptTrade] From:", fromPlayer and fromPlayer.Name or "Unknown")
+        print("[AutoAcceptTrade] Item ID:", itemData and itemData.Id or "Unknown")
+        print("[AutoAcceptTrade] UUID:", itemData and itemData.UUID or "Unknown")
+        print("[AutoAcceptTrade] Timestamp:", timestamp)
         
         currentTradeData = {
             item = itemData,
@@ -198,25 +112,26 @@ local function setupTradeResponseListener()
         }
         isProcessingTrade = true
 
-        -- Auto-accept trade
-        print("[AutoAcceptTrade] ✅ Auto-accepting trade...")
+        -- LANGSUNG ACCEPT - No GUI interaction needed!
+        print("[AutoAcceptTrade] ✅ Auto-accepting trade (direct response)...")
         totalTradesAccepted = totalTradesAccepted + 1
         currentSessionTrades = currentSessionTrades + 1
         
         -- Reset processing state after a delay
         task.spawn(function()
-            task.wait(1)
+            task.wait(2) -- Give some time for trade to process
             isProcessingTrade = false
         end)
 
-        return true -- Accept the trade
+        -- Return TRUE = Accept trade (server akan proses trade ini)
+        return true
     end
 
-    print("[AutoAcceptTrade] Trade response listener setup complete")
+    print("[AutoAcceptTrade] Direct trade response hook installed (no GUI clicking needed)")
     return true
 end
 
--- FIX 2: Proper __newindex hook mengikuti pola Incoming.luau
+-- FIX 2: Simplified __newindex hook - no GUI clicking
 local function installNewIndexGuard()
     if newindexHookInstalled then return end
     
@@ -241,14 +156,16 @@ local function installNewIndexGuard()
             )
 
             if IsCallable then
-                -- Re-wrap the new callback
-                return originalNewIndex(self, key, function(...)
+                -- Re-wrap the new callback - DIRECT APPROACH
+                return originalNewIndex(self, key, function(itemData, fromPlayer, timestamp)
                     if running then
-                        -- Auto-accept if running
-                        print("[AutoAcceptTrade] 🔔 Trade request intercepted via newindex hook")
+                        -- LANGSUNG RETURN TRUE - no GUI needed
+                        print("[AutoAcceptTrade] 🔔 Trade intercepted via newindex hook - auto-accepting")
+                        totalTradesAccepted = totalTradesAccepted + 1
+                        currentSessionTrades = currentSessionTrades + 1
                         return true
                     end
-                    return value(...) -- Call original if not running
+                    return value(itemData, fromPlayer, timestamp) -- Call original if not running
                 end)
             end
         end
@@ -257,7 +174,7 @@ local function installNewIndexGuard()
     end))
 
     newindexHookInstalled = true
-    print("[AutoAcceptTrade] __newindex guard installed")
+    print("[AutoAcceptTrade] Direct response __newindex guard installed (no GUI clicking)")
 end
 
 local function setupNotificationListener()
@@ -273,8 +190,7 @@ local function setupNotificationListener()
             if string.find(text, "trade completed") or string.find(text, "trade successful") then
                 print("[AutoAcceptTrade] ✅ Trade completed successfully!")
                 
-                -- Stop clicking
-                stopClickingLoop()
+                -- Stop processing (no clicking to stop since we don't click)
                 isProcessingTrade = false
                 
                 -- Log trade info
@@ -292,8 +208,7 @@ local function setupNotificationListener()
                    string.find(text, "trade failed") then
                 print("[AutoAcceptTrade] ❌ Trade was cancelled/expired/declined")
                 
-                -- Stop processing
-                stopClickingLoop()
+                -- Stop processing (no clicking to stop)
                 isProcessingTrade = false
                 currentTradeData = nil
             end
@@ -363,8 +278,7 @@ function AutoAcceptTrade:Stop()
     
     running = false
     
-    -- Stop any active clicking
-    stopClickingLoop()
+    -- Stop processing (no clicking to stop)
     isProcessingTrade = false
     currentTradeData = nil
     
@@ -377,15 +291,10 @@ end
 function AutoAcceptTrade:Cleanup()
     self:Stop()
 
-    -- Disconnect connections
+    -- Disconnect connections (no clicking connections to clean)
     if notificationConnection then
         notificationConnection:Disconnect()
         notificationConnection = nil
-    end
-
-    if clickConnection then
-        clickConnection:Disconnect()
-        clickConnection = nil
     end
 
     -- Restore original callback
@@ -485,21 +394,10 @@ function AutoAcceptTrade:TestRemoteAccess()
 end
 
 function AutoAcceptTrade:TestYesButton()
-    local yesButton = findYesButton()
-    if yesButton then
-        print("[AutoAcceptTrade] ✓ Yes button found at:", yesButton:GetFullName())
-        print("  Visible:", yesButton.Visible)
-        print("  AbsolutePosition:", yesButton.AbsolutePosition)
-        print("  AbsoluteSize:", yesButton.AbsoluteSize)
-        
-        local success = clickYesButton()
-        print("  Click test result:", success)
-        return true
-    else
-        print("[AutoAcceptTrade] ❌ Yes button not found")
-        print("  Checking path: Players." .. LocalPlayer.Name .. ".PlayerGui.Prompt.Blackout.Options.Yes")
-        return false
-    end
+    -- This function is now deprecated since we use direct hook approach
+    print("[AutoAcceptTrade] ℹ️  TestYesButton is deprecated - using direct hook approach instead")
+    print("[AutoAcceptTrade] ℹ️  No GUI clicking needed with current implementation")
+    return true
 end
 
 -- === Statistics Methods ===
