@@ -1504,7 +1504,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
         if state then
             -- Load modul kalau belum ada
             if not autoAcceptTradeFeature then
-                autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade", {
+                autoAcceptTradeFeature = FeatureManager:GetFeature("AutoAcceptTrade", {
                     -- kamu bisa kirim nilai konfigurasi kalau mau override:
                     -- ClicksPerSecond = 18,
                     -- MaxSpamSeconds  = 6,
