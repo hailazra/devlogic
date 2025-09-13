@@ -1,5 +1,6 @@
--- File: autoaccepttrade_spam.lua
--- Mode: RECT-CLICK ONLY (no instance lookups). Start when Prompt.Enabled = true or NotifyAwaitTradeResponse() dipanggil.
+-- File: autoaccepttrade_dynamic.lua
+-- Mode: DYNAMIC BUTTON DETECTION - mengambil posisi langsung dari ImageButton Yes
+-- Start when Prompt.Enabled = true atau NotifyAwaitTradeResponse() dipanggil.
 -- Stop saat RE/TextNotification mengandung "trade complete"/cancelled, Prompt dimatikan, atau timeout.
 
 local AutoAcceptTradeSpam = {}
@@ -15,20 +16,16 @@ local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
 -- ================== CONFIG ==================
 local CONFIG = {
-    -- Target rect (ABSOLUTE, tetap di PC/Mobile kata kamu)
-    Rect = {
-        X = 291.137,
-        Y = 137.208,
-        W = 80.738,
-        H = 22.812,
-    },
-
     PromptName      = "Prompt",  -- ScreenGui di PlayerGui
-    ClicksPerSecond = 18,        -- 6..40 aman. Naikkan kalau perlu.
-    MaxSpamSeconds  = 6,         -- safety stop biar nggak nyangkut
-    EdgePaddingFrac = 0,      -- klik agak ke tengah (hindari pinggir rect)
+    YesButtonName   = "Yes",     -- nama ImageButton Yes
+    ClicksPerSecond = 18,        -- 6..40 aman
+    MaxSpamSeconds  = 6,         -- safety stop
+    EdgePaddingFrac = 0.05,      -- padding kecil aja (5%)
     UseVIM          = true,      -- VirtualInputManager click
-    AlsoMoveMouse   = true,      -- kirim mouse move sebelum click (lebih natural)
+    AlsoMoveMouse   = true,      -- kirim mouse move sebelum click
+    
+    -- Opsi untuk debug
+    DebugPrint      = false,     -- print posisi button saat ditemukan
 
     StopOnTextMatches = { "trade completed!", "Trade completed!", "trade successful" },
     StopOnFailMatches = { "trade cancelled", "trade canceled", "trade declined", "trade expired", "trade failed" },
@@ -40,6 +37,7 @@ local stopRequested     = false
 local spamThread        = nil
 
 local promptGui         = nil
+local yesButton         = nil
 local promptEnabledConn = nil
 local promptAncestryConn= nil
 
@@ -83,18 +81,52 @@ local function getPromptGui()
     return (g and g:IsA("ScreenGui")) and g or nil
 end
 
-local function randomPointInRect()
+local function findYesButton(gui)
+    if not gui then return nil end
+    
+    -- Search untuk ImageButton bernama "Yes" di dalam Prompt
+    local function searchInDescendants(parent)
+        for _, child in ipairs(parent:GetDescendants()) do
+            if child:IsA("ImageButton") and child.Name == CONFIG.YesButtonName then
+                return child
+            end
+        end
+        return nil
+    end
+    
+    return searchInDescendants(gui)
+end
+
+local function getButtonRect(button)
+    if not button then return nil end
+    
+    local absPos = button.AbsolutePosition
+    local absSize = button.AbsoluteSize
+    
+    return {
+        X = absPos.X,
+        Y = absPos.Y,
+        W = absSize.X,
+        H = absSize.Y
+    }
+end
+
+local function randomPointInRect(rect)
+    if not rect then return nil, nil end
+    
     local pad = math.clamp(CONFIG.EdgePaddingFrac or 0, 0, 0.49)
-    local minX = CONFIG.Rect.X + CONFIG.Rect.W * pad
-    local maxX = CONFIG.Rect.X + CONFIG.Rect.W * (1 - pad)
-    local minY = CONFIG.Rect.Y + CONFIG.Rect.H * pad
-    local maxY = CONFIG.Rect.Y + CONFIG.Rect.H * (1 - pad)
+    local minX = rect.X + rect.W * pad
+    local maxX = rect.X + rect.W * (1 - pad)
+    local minY = rect.Y + rect.H * pad
+    local maxY = rect.Y + rect.H * (1 - pad)
     local x = minX + (maxX - minX) * math.random()
     local y = minY + (maxY - minY) * math.random()
     return x, y
 end
 
 local function clickXY(x, y)
+    if not x or not y then return end
+    
     if CONFIG.AlsoMoveMouse and VirtualInputManager then
         pcall(function()
             VirtualInputManager:SendMouseMoveEvent(x, y, game)
@@ -103,8 +135,6 @@ local function clickXY(x, y)
     if CONFIG.UseVIM and VirtualInputManager then
         VirtualInputManager:SendMouseButtonEvent(x, y, 0, true,  game, 0)
         VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
-    else
-        -- kalau executor nggak dukung VIM, ya udah: no-op (atau kamu bisa tambah fallback lain di sini)
     end
 end
 
@@ -120,19 +150,44 @@ end
 
 local function startSpam()
     if spamming then return end
+    
+    -- Cari button Yes terlebih dahulu
+    yesButton = findYesButton(promptGui)
+    if not yesButton then
+        warn("[AutoAcceptTradeSpam] ImageButton 'Yes' tidak ditemukan!")
+        return
+    end
+    
+    local rect = getButtonRect(yesButton)
+    if not rect then
+        warn("[AutoAcceptTradeSpam] Tidak bisa ambil posisi button!")
+        return
+    end
+    
+    if CONFIG.DebugPrint then
+        print(("[AutoAcceptTradeSpam] Button pos: (%.3f, %.3f) size: (%.3f, %.3f)")
+            :format(rect.X, rect.Y, rect.W, rect.H))
+    end
+    
     spamming = true
     stopRequested = false
 
     spamThread = task.spawn(function()
         local started = tick()
-        print(("[AutoAcceptTradeSpam] spam start @ rect (%.3f, %.3f, %.3f, %.3f)")
-            :format(CONFIG.Rect.X, CONFIG.Rect.Y, CONFIG.Rect.W, CONFIG.Rect.H))
+        print(("[AutoAcceptTradeSpam] spam start pada Yes button @ (%.3f, %.3f, %.3f, %.3f)")
+            :format(rect.X, rect.Y, rect.W, rect.H))
 
         while spamming do
             if stopRequested then break end
-
-            local x, y = randomPointInRect()
-            clickXY(x, y)
+            
+            -- Update rect setiap loop untuk handle perubahan posisi
+            local currentRect = getButtonRect(yesButton)
+            if currentRect then
+                local x, y = randomPointInRect(currentRect)
+                if x and y then
+                    clickXY(x, y)
+                end
+            end
 
             local base = 1 / math.clamp(CONFIG.ClicksPerSecond, 6, 40)
             task.wait(base + (math.random() - 0.5) * base * 0.35)
@@ -171,13 +226,14 @@ local function unbindPrompt()
     if promptEnabledConn then promptEnabledConn:Disconnect(); promptEnabledConn = nil end
     if promptAncestryConn then promptAncestryConn:Disconnect(); promptAncestryConn = nil end
     promptGui = nil
+    yesButton = nil
 end
 
 local function onPromptEnabledChanged()
     if not running then return end
     if not promptGui then return end
     if promptGui.Enabled then
-        task.delay(0.02, function()
+        task.delay(0.1, function()  -- delay lebih lama untuk pastikan UI ready
             if running and promptGui and promptGui.Enabled then
                 startSpam()
             end
@@ -223,22 +279,14 @@ function AutoAcceptTradeSpam:Init(opts)
     opts = opts or {}
     for k, v in pairs(opts) do
         if CONFIG[k] ~= nil then
-            if k == "Rect" and type(v) == "table" then
-                for kk, vv in pairs(v) do
-                    if CONFIG.Rect[kk] ~= nil then CONFIG.Rect[kk] = vv end
-                end
-            else
-                CONFIG[k] = v
-            end
+            CONFIG[k] = v
         end
     end
     bindTextNotifications()
-    print(("[AutoAcceptTradeSpam] ready (rect mode) @ (%.3f, %.3f, %.3f, %.3f)")
-        :format(CONFIG.Rect.X, CONFIG.Rect.Y, CONFIG.Rect.W, CONFIG.Rect.H))
+    print("[AutoAcceptTradeSpam] ready (dynamic button detection mode)")
     return true
 end
 
--- opsional: panggil ini dari deteksi RF/AwaitTradeResponse kamu
 function AutoAcceptTradeSpam:NotifyAwaitTradeResponse()
     if not running then return end
     startSpam()
@@ -250,7 +298,7 @@ function AutoAcceptTradeSpam:Start()
     bindPrompt()
 
     -- kalau saat Start prompt udah nyala, langsung spam
-    task.delay(0.05, function()
+    task.delay(0.1, function()
         if running then
             local g = getPromptGui()
             if g and g.Enabled then startSpam() end
@@ -275,9 +323,41 @@ function AutoAcceptTradeSpam:Cleanup()
     if notifConn then notifConn:Disconnect(); notifConn = nil end
 end
 
--- Utility: update rect runtime kalau mau (misal tombol geser)
-function AutoAcceptTradeSpam:SetRect(x, y, w, h)
-    CONFIG.Rect.X, CONFIG.Rect.Y, CONFIG.Rect.W, CONFIG.Rect.H = x, y, w, h
+-- Utility functions
+function AutoAcceptTradeSpam:SetYesButtonName(name)
+    CONFIG.YesButtonName = name
+end
+
+function AutoAcceptTradeSpam:EnableDebug(enable)
+    CONFIG.DebugPrint = enable or true
+end
+
+-- Manual function untuk test posisi button
+function AutoAcceptTradeSpam:TestButtonPosition()
+    local gui = getPromptGui()
+    if not gui then
+        print("Prompt GUI tidak ditemukan!")
+        return
+    end
+    
+    local button = findYesButton(gui)
+    if not button then
+        print("Button 'Yes' tidak ditemukan!")
+        return
+    end
+    
+    local rect = getButtonRect(button)
+    if rect then
+        print(("Button 'Yes' ditemukan - Pos: (%.3f, %.3f) Size: (%.3f, %.3f)")
+            :format(rect.X, rect.Y, rect.W, rect.H))
+        
+        -- Test click sekali
+        local x, y = randomPointInRect(rect)
+        if x and y then
+            print(("Test click di: (%.3f, %.3f)"):format(x, y))
+            clickXY(x, y)
+        end
+    end
 end
 
 return AutoAcceptTradeSpam
