@@ -1102,69 +1102,160 @@ local function normalizeOption(opt)
     return nil
 end
 
+-- Auto Send Trade GUI Wiring
 local autoTradeFeature = nil
 local selectedTradeItems = {}
-local selectedTradePlayers = {}
+local currentTargetPlayer = nil
 
-local tradeplayer_ddm = autotrade_sec:Dropdown({
-    Title = "Select Target Players", 
-    Values = listPlayers(true),
-    Multi = true,
-    AllowNone = true,
-    Callback = function(selectedPlayers)
-        selectedTradePlayers = selectedPlayers
-        if autoTradeFeature then
-            autoTradeFeature:SetSelectedPlayers(selectedPlayers)
-        end
-    end
-})
-
+-- Dropdown untuk pilih items & fish tiers (Multi)
 local tradeitem_ddm = autotrade_sec:Dropdown({
     Title = "Select Items & Fish Tiers",
-    Values = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common", "Enchant Stone"}, -- akan di-populate otomatis
+    Values = { "SECRET", "Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common", "Enchant Stone" }, -- fallback
+    Value = {},
     Multi = true,
     AllowNone = true,
-    Callback = function(selectedItems)
-        selectedTradeItems = selectedItems
-        if autoTradeFeature then
-            autoTradeFeature:SetSelectedItems(selectedItems)
+    Callback = function(options)
+        selectedTradeItems = options or {}
+        if autoTradeFeature and autoTradeFeature.SetSelectedItems then
+            autoTradeFeature:SetSelectedItems(selectedTradeItems)
         end
+        print("[AutoSendTrade] Selected items:", table.concat(selectedTradeItems, ", "))
     end
 })
 
-local refreshplayers_btn = autotrade_sec:Button({
-    Title = "Refresh Players",
+-- Dropdown untuk pilih target player (Single)
+local tradeplayer_dd = autotrade_sec:Dropdown({
+    Title = "Select Target Player",
+    Values = listPlayers(true), -- menggunakan helper function Anda
+    Value = "",
+    Callback = function(option)
+        local name = normalizeOption(option) -- menggunakan helper function Anda
+        currentTargetPlayer = name
+        if autoTradeFeature and autoTradeFeature.SetTarget then
+            autoTradeFeature:SetTarget(name)
+        end
+        print("[AutoSendTrade] Selected target player:", name)
+    end
+})
+
+-- Button refresh player list
+local traderefresh_btn = autotrade_sec:Button({
+    Title = "Refresh Player List",
+    Desc = "",
+    Locked = false,
     Callback = function()
-        if autoTradeFeature then
-            local onlinePlayers = autoTradeFeature:GetOnlinePlayers()
-            tradeplayer_ddm:Refresh(onlinePlayers)
+        local names = listPlayers(true)
+        tradeplayer_dd:Refresh(names) -- API resmi WindUI
+        
+        -- Jaga state: kalau current hilang, auto-pick pertama
+        if not table.find(names, currentTargetPlayer) then
+            currentTargetPlayer = names[1]
+            if currentTargetPlayer then
+                tradeplayer_dd:Select(currentTargetPlayer) -- API resmi WindUI
+                if autoTradeFeature and autoTradeFeature.SetTarget then
+                    autoTradeFeature:SetTarget(currentTargetPlayer)
+                end
+            end
         end
+        
+        WindUI:Notify({ 
+            Title = "Players", 
+            Content = ("Online: %d"):format(#names), 
+            Icon = "users", 
+            Duration = 2 
+        })
     end
 })
 
+-- Toggle untuk start/stop auto trade
 local autotrade_tgl = autotrade_sec:Toggle({
     Title = "Auto Send Trade",
+    Desc = "Automatically send trade requests with selected items",
     Default = false,
     Callback = function(state)
         if state then
+            -- Load feature jika belum ada
             if not autoTradeFeature then
                 autoTradeFeature = FeatureManager:GetFeature("AutoSendTrade", {
                     itemDropdown = tradeitem_ddm,
-                    playerDropdown = tradeplayer_ddm,
-                    refreshButton = refreshplayers_btn
+                    playerDropdown = tradeplayer_dd,
+                    refreshButton = traderefresh_btn
                 })
+                
+                -- Refresh dropdown items setelah feature loaded
+                if autoTradeFeature then
+                    task.spawn(function()
+                        task.wait(0.5)
+                        if autoTradeFeature.GetAvailableItems then
+                            local availableItems = autoTradeFeature:GetAvailableItems()
+                            tradeitem_ddm:Refresh(availableItems)
+                        end
+                    end)
+                end
             end
-            if autoTradeFeature then
+            
+            -- Validasi: pastikan ada items yang dipilih
+            if not selectedTradeItems or #selectedTradeItems == 0 then
+                WindUI:Notify({
+                    Title = "Info",
+                    Content = "Select at least 1 item/tier first",
+                    Icon = "info",
+                    Duration = 3
+                })
+                autotrade_tgl:Set(false)
+                return
+            end
+            
+            -- Fallback: kalau target player nil, coba ambil dari dropdown
+            if (not currentTargetPlayer or currentTargetPlayer == "") then
+                local v = rawget(tradeplayer_dd, "Value")
+                currentTargetPlayer = normalizeOption(v)
+            end
+            
+            -- Validasi: pastikan ada target player
+            if (not currentTargetPlayer or currentTargetPlayer == "") then
+                WindUI:Notify({
+                    Title = "Info",
+                    Content = "Select target player first",
+                    Icon = "info",
+                    Duration = 3
+                })
+                autotrade_tgl:Set(false)
+                return
+            end
+            
+            -- Start auto trade
+            if autoTradeFeature and autoTradeFeature.Start then
                 autoTradeFeature:Start({
                     tierList = selectedTradeItems,
-                    playerList = selectedTradePlayers
+                    playerList = { currentTargetPlayer } -- convert single player to array
+                })
+                
+                WindUI:Notify({
+                    Title = "Started",
+                    Content = "Auto Send Trade is now active",
+                    Icon = "check",
+                    Duration = 2
                 })
             else
                 autotrade_tgl:Set(false)
+                WindUI:Notify({
+                    Title = "Failed",
+                    Content = "Could not start Auto Send Trade",
+                    Icon = "x",
+                    Duration = 3
+                })
             end
         else
-            if autoTradeFeature then
+            -- Stop auto trade
+            if autoTradeFeature and autoTradeFeature.Stop then
                 autoTradeFeature:Stop()
+                WindUI:Notify({
+                    Title = "Stopped", 
+                    Content = "Auto Send Trade stopped",
+                    Icon = "info",
+                    Duration = 2
+                })
             end
         end
     end
