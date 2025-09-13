@@ -32,7 +32,6 @@ end
 --- Bait
 local function getBaitNames()
     local baitName = {}
-    
     for _, item in pairs(BaitModule:GetChildren()) do
         if item:IsA("ModuleScript") then
             local success, moduleData = pcall(function()
@@ -98,7 +97,6 @@ end
 --- Weather (Event)
 local function getEventNames()
     local eventNames = {}
-    
     for _, event in pairs(WeatherModule:GetChildren()) do
         if event:IsA("ModuleScript") then
             local success, moduleData = pcall(function()
