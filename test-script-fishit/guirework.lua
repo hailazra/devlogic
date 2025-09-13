@@ -1492,7 +1492,7 @@ local autotrade_tgl = autotrade_sec:Toggle({
     end
 })
 
-
+-- Auto Accept Trade implementation
 local autoAcceptTradeFeature = nil
 
 -- Input untuk click interval (optional)
@@ -1521,11 +1521,13 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
     Desc = "Automatically accept incoming trade requests",
     Default = false,
     Callback = function(state) 
+        print("[GUI] AutoAcceptTrade toggle:", state)
+        
         if state then
             -- Load feature jika belum ada
             if not autoAcceptTradeFeature then
                 print("[AutoAcceptTrade] Loading feature...")
-                autoAcceptTradeFeature = FeatureManager:LoadFeature("AutoAcceptTrade", {
+                autoAcceptTradeFeature = FeatureManager:GetFeature("AutoAcceptTrade", {
                     intervalInput = acceptinterval_in,
                     toggle = autogiftacc_tgl
                 })
@@ -1540,6 +1542,8 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
                     autogiftacc_tgl:Set(false)
                     return
                 end
+                
+                print("[AutoAcceptTrade] Feature loaded successfully")
             end
             
             -- Get click interval
@@ -1547,6 +1551,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
             if clickInterval < 0.05 then clickInterval = 0.05 end
             
             -- Start auto accept
+            print("[AutoAcceptTrade] Starting with interval:", clickInterval)
             if autoAcceptTradeFeature and autoAcceptTradeFeature.Start then
                 local success = autoAcceptTradeFeature:Start({
                     clickInterval = clickInterval,
@@ -1560,7 +1565,7 @@ local autogiftacc_tgl = autotrade_sec:Toggle({
                         Icon = "check",
                         Duration = 2
                     })
-                    print("[AutoAcceptTrade] Successfully started with interval:", clickInterval)
+                    print("[AutoAcceptTrade] Successfully started")
                 else
                     autogiftacc_tgl:Set(false)
                     WindUI:Notify({
