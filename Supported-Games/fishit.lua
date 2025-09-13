@@ -1102,6 +1102,39 @@ local function normalizeOption(opt)
     return nil
 end
 
+local function normalizeList(opts)
+    local out = {}
+    local function push(v)
+        if v ~= nil then table.insert(out, tostring(v)) end
+    end
+    if type(opts) == "string" or type(opts) == "number" then
+        push(opts)
+    elseif type(opts) == "table" then
+        if #opts > 0 then
+            for _, v in ipairs(opts) do
+                if type(v) == "table" then
+                    push(v.Value or v.value or v.Name or v.name or v[1] or v.Selected or v.selection)
+                else
+                    push(v)
+                end
+            end
+        else
+            for k, v in pairs(opts) do
+                if type(k) ~= "number" and v then
+                    push(k)
+                else
+                    if type(v) == "table" then
+                        push(v.Value or v.value or v.Name or v.name or v[1] or v.Selected or v.selection)
+                    else
+                        push(v)
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
 -- Auto Send Trade GUI Wiring
 local autoTradeFeature = nil
 local selectedTradeItems = {}
@@ -1120,7 +1153,7 @@ local tradeitem_ddm = autotrade_sec:Dropdown({
             -- boleh pass original (robust), atau versi normalized (lebih konsisten)
             autoTradeFeature:SetSelectedItems(selectedTradeItems)
         end
-        local show = normalizeOption(selectedTradeItems)
+        local show = normalizeList(selectedTradeItems)
         print("[AutoSendTrade] Selected items:", #show>0 and table.concat(show, ", ") or "(none)")
     end
 })
