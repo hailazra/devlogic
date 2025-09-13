@@ -30,8 +30,6 @@ local MAX_CLICK_ATTEMPTS = 100 -- Maximum clicks per trade (10 seconds)
 -- Remotes
 local awaitTradeResponseRemote = nil
 local textNotificationRemote = nil
-local originalAwaitTradeCB :: any = nil  -- simpan callback asli
-local newindexHookInstalled = false
 
 -- === Helper Functions ===
 
@@ -172,81 +170,36 @@ local function stopClickingLoop()
 end
 
 local function setupTradeResponseListener()
-    if not awaitTradeResponseRemote then return end
-
-    -- ikuti pola Incoming.txt: wrap callback, bukan :Connect
-    local function wrapAwaitTradeResponse(rf: RemoteFunction)
-    if not rf then return false end
-
-    local ok, cb = pcall(getcallbackvalue, rf, "OnClientInvoke")
-    local callable = ok and (
-        type(cb) == "function"
-        or (getrawmetatable(cb) and type(getrawmetatable(cb).__call) == "function")
-    )
-
-    if not callable then
-        warn("[AutoAcceptTrade] getcallbackvalue gagal / callback tidak callable; batal wrap")
-        return false
-    end
-
-    originalAwaitTradeCB = cb
-
-    -- MODE A (disarankan): auto-accept langsung tanpa klik GUI
-    rf.OnClientInvoke = newcclosure(function(itemData, fromPlayer, timestamp, ...)
-        if not running then
-            -- jika fitur off, kembalikan ke perilaku asli game
-            return originalAwaitTradeCB(itemData, fromPlayer, timestamp, ...)
-        end
-
+    if not awaitTradeResponseRemote or responseConnection then return end
+    
+    -- Hook OnClientInvoke for AwaitTradeResponse
+    responseConnection = awaitTradeResponseRemote.OnClientInvoke:Connect(function(itemData, fromPlayer, timestamp)
+        if not running then return end
+        
         print("[AutoAcceptTrade] 🔔 Trade request detected!")
+        print("  From:", fromPlayer and fromPlayer.Name or "Unknown")
+        print("  Item ID:", itemData and itemData.Id or "Unknown")
+        print("  UUID:", itemData and itemData.UUID or "Unknown")
+        
+        -- Store trade data
         currentTradeData = {
             item = itemData,
             fromPlayer = fromPlayer,
             timestamp = timestamp,
-            startTime = tick(),
+            startTime = tick()
         }
+        
+        -- Start processing this trade
         isProcessingTrade = true
-
-        -- langsung terima trade (hindari fragilitas klik GUI)
-        return true
+        
+        -- Start clicking Yes button
+        task.spawn(function()
+            task.wait(0.5) -- Small delay before starting clicks
+            startClickingLoop()
+        end)
     end)
-
-    print("[AutoAcceptTrade] Wrapped AwaitTradeResponse.OnClientInvoke (ala Incoming)")
-    return true
-end
-
--- ==== GUARD: jaga kalau game assign OnClientInvoke lagi ====
-local function installNewIndexGuard()
-    if newindexHookInstalled then return end
-    if type(hookmetamethod) ~= "function" or type(newcclosure) ~= "function" or type(checkcaller) ~= "function" then
-        warn("[AutoAcceptTrade] __newindex hook tidak tersedia di executor; guard dilewati")
-        return
-    end
-
-    local oldNewIndex
-    oldNewIndex = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
-        -- Mirip pola Incoming.txt: jika ada assignment ke RemoteFunction.OnClientInvoke, re-wrap
-        if typeof(self) == "Instance"
-            and self.ClassName == "RemoteFunction"
-            and key == "OnClientInvoke"
-            and (type(value) == "function"
-                 or (getrawmetatable(value) and type(getrawmetatable(value).__call) == "function")) then
-
-            -- bungkus callback baru supaya auto-accept tetap aktif untuk RF target kita
-            return oldNewIndex(self, key, newcclosure(function(...)
-                -- kalau yang di-assign ini adalah RF target kita dan fitur sedang aktif → tetap auto-accept
-                if self == awaitTradeResponseRemote and running then
-                    return true
-                end
-                -- kalau fitur off / RF lain → jalankan callback aslinya
-                return value(...)
-            end))
-        end
-        return oldNewIndex(self, key, value)
-    end))
-
-    newindexHookInstalled = true
-    print("[AutoAcceptTrade] __newindex guard terpasang")
+    
+    print("[AutoAcceptTrade] Trade response listener setup complete")
 end
 
 local function setupNotificationListener()
@@ -361,56 +314,26 @@ end
 
 function AutoAcceptTrade:Cleanup()
     self:Stop()
-
+    
+    -- Disconnect all connections
     if responseConnection and type(responseConnection) == "RBXScriptConnection" then
         responseConnection:Disconnect()
     end
     responseConnection = nil
-
+    
     if notificationConnection then
         notificationConnection:Disconnect()
         notificationConnection = nil
     end
-
+    
     if clickConnection then
         clickConnection:Disconnect()
         clickConnection = nil
     end
-
-    -- kembalikan callback asli biar logic game aman
+    
+    -- Reset OnClientInvoke if we hooked it
     if awaitTradeResponseRemote then
-        if originalAwaitTradeCB then
-            awaitTradeResponseRemote.OnClientInvoke = originalAwaitTradeCB
-            originalAwaitTradeCB = nil
-        else
-            -- hanya kalau kita memang meng-overwrite total
-            awaitTradeResponseRemote.OnClientInvoke = nil
-        end
-    end
-
-    awaitTradeResponseRemote = nil
-    textNotificationRemote = nil
-    currentTradeData = nil
-    totalTradesAccepted = 0
-    currentSessionTrades = 0
-
-    print("[AutoAcceptTrade] Cleaned up (callback restored)")
-end
-    
-    -- Disconnect all connections
-    if responseConnection then
-        responseConnection:Disconnect()
-        responseConnection = nil
-    end
-    
-    if notificationConnection then
-        notificationConnection:Disconnect()
-        notificationConnection = nil
-    end
-    
-    if clickConnection then
-        clickConnection:Disconnect()
-        clickConnection = nil
+        awaitTradeResponseRemote.OnClientInvoke = nil
     end
     
     -- Clear references
