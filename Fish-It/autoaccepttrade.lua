@@ -316,10 +316,10 @@ function AutoAcceptTrade:Cleanup()
     self:Stop()
     
     -- Disconnect all connections
-    if responseConnection then
+    if responseConnection and type(responseConnection) == "RBXScriptConnection" then
         responseConnection:Disconnect()
-        responseConnection = nil
     end
+    responseConnection = nil
     
     if notificationConnection then
         notificationConnection:Disconnect()
@@ -329,6 +329,11 @@ function AutoAcceptTrade:Cleanup()
     if clickConnection then
         clickConnection:Disconnect()
         clickConnection = nil
+    end
+    
+    -- Reset OnClientInvoke if we hooked it
+    if awaitTradeResponseRemote then
+        awaitTradeResponseRemote.OnClientInvoke = nil
     end
     
     -- Clear references
